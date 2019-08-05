@@ -35,6 +35,26 @@ const Helper = {
         if (stroke) {
             ctx.stroke();
         }
+    },
+
+    drawRotatedImage: function (ctx, img, x, y, width, height, rad) {
+
+        //Set the origin to the center of the image
+        ctx.translate(x + width / 2, y + height / 2);
+
+        //Rotate the canvas around the origin
+        ctx.rotate(rad);
+
+        //draw the image    
+        ctx.drawImage(img, width / 2 * (-1), height / 2 * (-1), width, height);
+
+        //reset the canvas  
+        ctx.rotate(rad * (-1));
+        ctx.translate((x + width / 2) * (-1), (y + height / 2) * (-1));
+    },
+
+    randomPointInRect(rect) {
+        return new Vector2(random(rect.left(), rect.right()), random(rect.top(), rect.bottom()));
     }
 }
 
@@ -51,8 +71,8 @@ class Vector2 {
     }
 
     mult(u) {
-        this.x /= u;
-        this.y /= u;
+        this.x *= u;
+        this.y *= u;
     }
 
     div(u) {
@@ -84,7 +104,7 @@ class Vector2 {
 }
 
 function random(min, max) {
-    return min + Math.random() * (max - min);
+    return Math.random() * (max - min + 1) + min;
 }
 
 function mapValue(value, start1, stop1, start2, stop2) {
