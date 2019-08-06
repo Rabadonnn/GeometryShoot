@@ -135,7 +135,6 @@ class Button {
             this.clicked = true;
         }
 
-
         window.addEventListener('mouseup', () => {
             if (this.rectangle.includes(mouse) && this.clicked) {
                 this.clicked = false;
@@ -170,7 +169,8 @@ function log(object) {
 
 var assetNames = [
     'player',
-    'circle'
+    'circle',
+    'scout'
 ];
 
 var assets = {};
@@ -196,6 +196,9 @@ window.onload = () => {
     MainMenuScreen.init();
     AboutScreen.init();
     GameScreen.init();
+
+    premadeAssets.init();
+
     if (assetsLoaded == assetNames.length) {
         document.getElementById("loading").style.display = "none";
         game.run();
@@ -203,19 +206,179 @@ window.onload = () => {
     }
 }
 
+const premadeAssets = {
+    bullet: document.createElement('canvas'),
+
+    init: function () {
+        this.bullet.width = 20;
+        this.bullet.height = 20;
+        let ctx = this.bullet.getContext('2d');
+        ctx.fillStyle = textColor;
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    },
+}
+
+const projectile = {
+    Bullet: function (position, direction) {
+        this.position = Vector2.copy(position);
+        this.direction = Vector2.copy(direction);
+        this.speed = 600;
+        this.size = 12;
+        this.dead = false;
+        this.lifetime = 2;
+        this.damage;
+
+        this.update = function () {
+            this.lifetime -= game.delta;
+            this.direction.normalize();
+            this.direction.mult(game.delta * this.speed);
+            this.position.add(this.direction);
+            if (this.lifetime < 0) {
+                this.dead = true;
+            }
+            this.position.toInt();
+        }
+
+        this.draw = function () {
+            game.context.drawImage(premadeAssets.bullet, this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
+        }
+    }
+}
+
+const enemy = {
+    Scout: function (position) {
+        this.position = position;
+        this.direction;
+        this.speed = 125;
+        this.size = 30;
+        this.bullets = [];
+        this.rotation = 0;
+        this.dead = false;
+        this.damage = 10;
+
+        this.c_shootingCooldown = 0.75;
+
+        this.shoot = function () {
+            let shootingCooldown = 0.75;
+
+            if (this.c_shootingCooldown < 0) {
+
+                let b = new projectile.Bullet(this.position, this.direction);
+                b.damage = 10;
+                b.speed = 200;
+                enemy.projectiles.push(b);
+
+                this.c_shootingCooldown = shootingCooldown;
+            } else {
+                this.c_shootingCooldown -= game.delta;
+            }
+        }
+
+        this.checkCollisionWithPlayerBullets = function () {
+            for (let i = 0; i < player.bullets.length; i++) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
+                    player.bullets[i].dead = true;
+                    player.score += player.rewards.scout[0];
+                    player.fuel += player.rewards.scout[1];
+                    this.dead = true;
+                }
+            }
+        }
+
+        this.update = function () {
+            this.direction = new Vector2(player.position.x - this.position.x, player.position.y - this.position.y);
+            this.direction.normalize();
+            this.direction.mult(game.delta * this.speed);
+            this.position.add(this.direction);
+
+            let a = player.position.y - this.position.y;
+            let b = player.position.x - this.position.x;
+            this.rotation = Math.atan2(a, b) + Math.PI / 2;
+
+            this.checkCollisionWithPlayerBullets();
+            this.shoot();
+
+            this.position.toInt();
+        }
+
+        this.draw = function () {
+            Helper.drawRotatedImage(game.context, assets['scout'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+        }
+    },
+
+    enemies: [],
+    projectiles: [],
+
+    reset: function () {
+        this.enemies = [];
+        this.c_spawnCooldown = 2;
+    },
+
+    c_spawnCooldown: 2,
+
+    update: function () {
+
+        let spawnCooldown = 2;
+
+        if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
+            let e = new this.Scout(new Vector2(0, 0));
+            this.enemies.push(e);
+            this.c_spawnCooldown = spawnCooldown;
+        } else {
+            this.c_spawnCooldown -= game.delta;
+        }
+
+        for (let i = 0; i < this.enemies.length; i++) {
+            if (this.enemies[i].dead) {
+                this.enemies.splice(i, 1);
+            } else {
+                this.enemies[i].update();
+            }
+        }
+
+        for (let i = 0; i < this.projectiles.length; i++) {
+            if (this.projectiles[i].dead) {
+                this.projectiles.splice(i, 1);
+            } else {
+                this.projectiles[i].update();
+
+                if (Helper.distance(this.projectiles[i].position, player.position) < player.size / 2) {
+                    player.fuel -= this.projectiles[i].damage;
+                    this.projectiles.splice(i, 1);
+                }
+            }
+        }
+    },
+
+    draw: function () {
+        for (let i = 0; i < this.enemies.length; i++) {
+            this.enemies[i].draw();
+        }
+
+        for (let i = 0; i < this.projectiles.length; i++) {
+            this.projectiles[i].draw();
+        }
+    }
+}
 
 class Player {
     constructor() {
         this.rectangle;
-        this.position = new Vector2(game.width / 2, game.height / 2);
+        this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.fuel = 100;
         this.speed = 300;
-        this.direction = new Vector2(200, 200);
-        this.size = 50;
+        this.direction = new Vector2(0, 0);
+        this.size = 40;
         this.idleCheckpoint = this.position;
         this.dead = false;
         this.score = 0;
+        this.camPos = this.position;
+        this.bullets = [];
+        this.c_shootingCooldown = 0;
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -247,7 +410,7 @@ class Player {
 
             draw() {
                 if (this.hasValue) {
-                    game.context.fillStyle = "rgba(0, 0, 0)";
+                    game.context.fillStyle = textColor;
 
                     game.context.globalAlpha = 0.1;
                     game.context.beginPath();
@@ -281,40 +444,87 @@ class Player {
                 }
             }
         }
+
+        this.rewards = {
+            scout: [
+                10,
+                5
+            ]
+        }
     }
 
     reset() {
         this.position = new Vector2(0, 0);
+        this.camPos = this.position;
         this.rotation = 0;
         this.fuel = 100;
         this.speed = 300;
-        this.direction = new Vector2(200, 200);
+        this.direction = new Vector2(0, 0);
         this.dead = false;
+        this.bullets = [];
     }
 
     update() {
-        if (this.joystick.hasValue && !this.dead) {
+        if (!this.dead) {
+            if (this.joystick.hasValue) {
 
-            this.direction = this.joystick.direction();
-            this.direction.mult(this.speed * game.delta);
-            this.position.add(this.direction);
+                this.direction = this.joystick.direction();
+                this.direction.mult(this.speed * game.delta);
+                this.position.add(this.direction);
 
-            this.rectangle = RectFromPosition(this.position, this.size, this.size);
+                this.rectangle = RectFromPosition(this.position, this.size, this.size);
 
-            let a = this.joystick.position.y - this.joystick.center.y;
-            let b = this.joystick.position.x - this.joystick.center.x;
-            this.rotation = Math.atan2(a, b) + 90 * Math.PI / 180;
+                let a = this.joystick.position.y - this.joystick.center.y;
+                let b = this.joystick.position.x - this.joystick.center.x;
+                this.rotation = Math.atan2(a, b) + 90 * Math.PI / 180;
 
-            this.fuel -= 4 * game.delta;
+                this.fuel -= 4 * game.delta;
 
-            if (this.fuel < 1) {
-                this.dead = true;
+                this.shoot();
+
+                if (this.fuel < 1) {
+                    this.dead = true;
+                }
+
+                this.position.toInt();
             }
+
+
+            for (let i = 0; i < this.bullets.length; i++) {
+                if (this.bullets[i].dead) {
+                    this.bullets.splice(i, 1);
+                } else {
+                    this.bullets[i].update();
+                }
+            }
+
+            this.camPos = Vector2.lerp(this.camPos, this.position, 0.01);
+            //game.camera.moveTo(this.camPos.x, this.camPos.y);
+        }
+    }
+
+    shoot() {
+        let shootingCooldown = 0.3;
+
+        if (this.c_shootingCooldown < 0 && (this.direction.x != 0 && this.direction.y != 0)) {
+            let bullet = new projectile.Bullet(this.position, this.direction);
+            this.bullets.push(bullet);
+            this.c_shootingCooldown = shootingCooldown;
+        } else {
+            this.c_shootingCooldown -= game.delta;
         }
     }
 
     draw() {
+
+        if (!this.dead) {
+            for (let i = 0; i < this.bullets.length; i++) {
+                this.bullets[i].draw();
+            }
+        }
+
         Helper.drawRotatedImage(game.context, assets['player'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+
 
         // game.context.fillStyle = "black";
         // game.context.beginPath();
@@ -391,21 +601,23 @@ var MainMenuScreen = {
         }
 
         if (this.bigText) {
-            game.context.font = "125px Abel";
+            game.context.font = "102px Abel";
         } else {
-            game.context.font = "120px Abel";
+            game.context.font = "100px Abel";
         }
 
         game.context.fillStyle = textColor;
-        game.context.fillText("PLANER", game.width / 2, 200);
+        game.context.fillText("GEOMETRY SHOOT", game.width / 2, 200);
 
         this.playButton.draw();
         this.aboutButton.draw();
     }
 };
+
 let gamePaused = false;
 function resetGameScreen() {
     player.reset();
+    enemy.reset();
     gamePaused = false;
     game.showTip = true;
     game.tipCooldown = 1.4;
@@ -442,8 +654,10 @@ var GameScreen = {
     update: function () {
         this.pauseButton.update();
         player.joystick.update();
-        if (gamePaused == false) {
+
+        if (gamePaused == false && !player.dead) {
             player.update();
+            enemy.update();
         } else {
             this.menuButton.update();
             this.restartButton.update();
@@ -458,6 +672,7 @@ var GameScreen = {
     draw: function () {
         game.camera.begin();
         player.draw();
+        enemy.draw();
         game.camera.end();
 
         if (this.showTip && this.tipCooldown > 0) {
@@ -472,8 +687,6 @@ var GameScreen = {
         } else {
             this.showTip = false;
         }
-
-        this.drawPlayerFuel();
 
         if (!gamePaused) {
             player.joystick.draw();
@@ -504,14 +717,21 @@ var GameScreen = {
             this.restartButton.draw();
             this.menuButton.draw();
         } else {
+            this.drawPlayerFuel();
             this.pauseButton.draw();
+
+            game.context.font = "40px Abel";
+            game.context.fillStyle = textColor;
+            game.context.fillText(player.score, game.width / 2, game.height / 10 * 1.5);
         }
     },
 
     drawPlayerFuel: function () {
-        let w = mapValue(player.fuel, 100, 0, 600, 0);
-        game.context.fillStyle = textColor;
-        Helper.roundRect(game.context, 25, 20, w, 18, 10, true, false);
+        if (player.fuel > 0) {
+            let w = mapValue(player.fuel, 100, 0, 600, 0);
+            game.context.fillStyle = textColor;
+            Helper.roundRect(game.context, 25, 20, w, 18, 10, true, false);
+        }
     }
 };
 

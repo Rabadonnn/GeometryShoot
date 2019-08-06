@@ -40,6 +40,10 @@ const Helper = {
     drawRotatedImage: function (ctx, img, x, y, width, height, rad) {
 
         //Set the origin to the center of the image
+
+        x = Math.floor(x);
+        y = Math.floor(y);
+
         ctx.translate(x + width / 2, y + height / 2);
 
         //Rotate the canvas around the origin
@@ -55,6 +59,10 @@ const Helper = {
 
     randomPointInRect(rect) {
         return new Vector2(random(rect.left(), rect.right()), random(rect.top(), rect.bottom()));
+    },
+
+    lerp: function (start, end, amt) {
+        return (1 - amt) * start + amt * end
     }
 }
 
@@ -100,6 +108,21 @@ class Vector2 {
             this.normalize();
             this.mult(max);
         }
+    }
+
+    static lerp(start, end, amt) {
+        let x = Helper.lerp(start.x, end.x, amt);
+        let y = Helper.lerp(start.y, end.y, amt);
+        return new Vector2(x, y);
+    }
+
+    static copy(v) {
+        return new Vector2(v.x, v.y);
+    }
+
+    toInt() {
+        this.x = Math.floor(this.x);
+        this.y = Math.floor(this.y);
     }
 }
 
@@ -224,3 +247,59 @@ function RectFromPosition(pos, w, h) {
     this.Camera = Camera;
 
 }).call(this);
+
+class Size {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    rand() {
+        return random(this.x, this.y);
+    }
+}
+
+var ParticleSettings = {
+    density,
+    lifespan,
+    size, 
+    accX, 
+    accY,
+    speed,
+    velocity,
+    textures,
+    oneTime,
+    systemLifetime,
+    increaseRotation
+}
+
+class Particle {
+    constructor (settings, position) {
+        this.position = position;
+        this.size = settings.size.rand();
+        this.speed = settings.speed.rand();
+        this.lifespan = settings.lifespan.rand();
+        this.initialLifespan = this.lifespan;
+        this.acceleration = new Vector2(settings.accX.rand(), settings.accY.rand());
+        this.texture = settings.textures[random(0, settings.textures.length)];
+        this.increaseRotation = settings.increaseRotation;
+        this.dir = random(0, 100) < 5 ? -1 : 1;
+        this.dead = false;
+        this.rotation = 0;
+    }
+
+    update() {
+        if (!this.dead) {
+            this.acceleration.mult(this.speed * game.delta);
+            this.position.add(this.acceleration);
+            this.lifespan -= game.delta;
+
+            if (this.lifespan <= 0) {
+                this.dead = true;
+            }
+
+            if (this.increaseRotation) {
+                this.rotation += mapValue()
+            }
+        }
+    }
+}
