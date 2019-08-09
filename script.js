@@ -150,8 +150,6 @@ class Button {
             game.context.strokeStyle = 'rgb(170, 170, 255)';
         }
 
-
-
         game.context.fillStyle = 'rgb(170, 170, 255)';
         game.context.lineWidth = 2;
         Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, true, true);
@@ -160,6 +158,149 @@ class Button {
         game.context.font = this.font;
         game.context.textAlign = "center";
         game.context.fillText(this.text, this.rectangle.center().x, this.rectangle.center().y + this.rectangle.w / 15);
+    }
+}
+
+
+var particles = {
+    Settings: function () {
+        this.density;
+        this.lifespan;
+        this.size;
+        this.accX = new Size(-100, 100);
+        this.accY = new Size(-100, 100);
+        this.speed;
+        this.velocity;
+        this.textures;
+        this.onetime;
+        this.systemLifetime;
+        this.increaseRotation;
+    },
+
+    Particle: function (settings, position) {
+        this.position = position;
+        this.size = settings.size.rand();
+        this.speed = settings.speed.rand();
+        this.lifespan = settings.lifespan.rand();
+        this.initialLifespan = this.lifespan;
+        this.acceleration = new Vector2(settings.accX.rand(), settings.accY.rand());
+        this.texture = settings.textures[Math.floor(Math.random() * settings.textures.length)];
+        this.increaseRotation = settings.increaseRotation;
+        this.dir = random(0, 100) < 5 ? -1 : 1;
+        this.dead = false;
+        this.rotation = 0;
+
+        this.update = function () {
+            if (!this.dead) {
+                this.acceleration.mult(this.speed * game.delta);
+                this.position.add(this.acceleration);
+                this.lifespan -= game.delta;
+
+                if (this.lifespan <= 0) {
+                    this.dead = true;
+                }
+
+                if (this.increaseRotation) {
+                    this.rotation = mapValue(this.lifespan, 0, this.initialLifespan, 0, Math.PI * 2) * this.dir;
+                }
+            }
+        }
+
+        this.draw = function () {
+            Helper.drawRotatedImage(game.context, this.texture, this.position.x, this.position.y, this.size, this.size, this.rotation);
+        }
+    },
+
+    System: function (rectangle, settings) {
+        this.enabled = true;
+        this.settings = settings;
+        this.rectangle = rectangle;
+        this.particles = [];
+        this.onetime = settings.onetime;
+        this.lifetime = settings.systemLifetime;
+        this.finished = false;
+
+        this.update = function () {
+            if (this.enabled) {
+                if (this.lifetime <= 0 && this.finished) {
+                    this.enabled = false;
+                } else {
+                    if (this.lifetime > 0) {
+                        for (let i = 0; i < this.settings.density; i++) {
+                            let pos = Helper.randomPointInRect(this.rectangle);
+                            this.particles.push(new particles.Particle(this.settings, pos));
+                        }
+
+                        this.lifetime -= game.delta;
+                    }
+
+                    if (particles.length == 0) {
+                        this.finished = true;
+                    }
+
+                    for (let i = 0; i < this.particles.length; i++) {
+                        if (this.particles[i].dead) {
+                            this.particles.splice(i, 1);
+                        } else {
+                            this.particles[i].update();
+                        }
+                    }
+                }
+            }
+        }
+
+        this.draw = function () {
+            for (let i = 0; i < this.particles.length; i++) {
+                this.particles[i].draw();
+            }
+        }
+    },
+
+    effects: [],
+
+    new: function (rectangle, settings) {
+        particles.effects.push(new particles.System(rectangle, settings));
+    },
+
+    reset: function() {
+        particles.effects.length = 0;
+    },
+
+    update: function () {
+        for (let i = 0; i < particles.effects.length; i++) {
+            let e = particles.effects[i];
+            if (e.enabled) {
+                e.update();
+            } else {
+                particles.effects.splice(i, 1);
+            }
+        }
+    },
+
+    draw: function () {
+        for (let i = 0; i < particles.effects.length; i++) {
+            particles.effects[i].draw();
+        }
+    },
+
+    configs: {
+        enemyExplosion: function () {
+            let settings = new particles.Settings();
+
+            settings.density = 5;
+            settings.increaseRotation = true;
+            settings.lifespan = new Size(0.5, 1);
+            settings.onetime = true;
+            settings.size = new Size(15, 30);
+            settings.speed = new Size(30, 70);
+            settings.systemLifetime = 0.1;
+            settings.textures = [
+                assets['player'],
+                assets['scout']
+            ];
+
+            return settings;
+        }
     }
 }
 
@@ -462,6 +603,7 @@ class Player {
         this.direction = new Vector2(0, 0);
         this.dead = false;
         this.bullets = [];
+        this.score = 0;
     }
 
     update() {
@@ -658,6 +800,7 @@ var GameScreen = {
         if (gamePaused == false && !player.dead) {
             player.update();
             enemy.update();
+            particles.update();
         } else {
             this.menuButton.update();
             this.restartButton.update();
@@ -724,6 +867,8 @@ var GameScreen = {
             game.context.fillStyle = textColor;
             game.context.fillText(player.score, game.width / 2, game.height / 10 * 1.5);
         }
+
+        particles.draw();
     },
 
     drawPlayerFuel: function () {
