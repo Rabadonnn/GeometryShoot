@@ -122,7 +122,7 @@ const textColor = "rgb(39, 40, 68)";
 
 class Button {
     constructor(pos, w, h, text, onClick) {
-        this.rectangle = RectFromPosition(pos, w, h);
+        this.rectangle = rectFromPosition(pos, w, h);
         this.text = text;
         this.onClick = onClick;
         this.textColor = textColor;
@@ -192,11 +192,12 @@ var particles = {
 
         this.update = function () {
             if (!this.dead) {
+                this.acceleration.normalize();
                 this.acceleration.mult(this.speed * game.delta);
                 this.position.add(this.acceleration);
                 this.lifespan -= game.delta;
 
-                if (this.lifespan <= 0) {
+                if (this.lifespan < 0) {
                     this.dead = true;
                 }
 
@@ -207,7 +208,7 @@ var particles = {
         }
 
         this.draw = function () {
-            Helper.drawRotatedImage(game.context, this.texture, this.position.x, this.position.y, this.size, this.size, this.rotation);
+            game.context.drawImage(this.texture, this.position.x, this.position.y, this.size, this.size);
         }
     },
 
@@ -234,7 +235,7 @@ var particles = {
                         this.lifetime -= game.delta;
                     }
 
-                    if (particles.length == 0) {
+                    if (this.particles.length == 0) {
                         this.finished = true;
                     }
 
@@ -262,7 +263,7 @@ var particles = {
         particles.effects.push(new particles.System(rectangle, settings));
     },
 
-    reset: function() {
+    reset: function () {
         particles.effects.length = 0;
     },
 
@@ -284,19 +285,19 @@ var particles = {
     },
 
     configs: {
-        enemyExplosion: function () {
+        scoutExplosion: function () {
             let settings = new particles.Settings();
 
-            settings.density = 5;
+            settings.density = 10;
             settings.increaseRotation = true;
-            settings.lifespan = new Size(0.5, 1);
+            settings.lifespan = new Size(0.01, 0.05);
             settings.onetime = true;
-            settings.size = new Size(15, 30);
-            settings.speed = new Size(30, 70);
-            settings.systemLifetime = 0.1;
+            settings.size = new Size(7, 13);
+            settings.speed = new Size(500, 800);
+            settings.systemLifetime = 0.05;
             settings.textures = [
-                assets['player'],
-                assets['scout']
+                assets['circle_purple'],
+                assets['circle_purple_dark']
             ];
 
             return settings;
@@ -311,7 +312,10 @@ function log(object) {
 var assetNames = [
     'player',
     'circle',
-    'scout'
+    'scout',
+    'circle_purple',
+    'circle_purple_dark',
+    'kamikaze'
 ];
 
 var assets = {};
@@ -422,8 +426,10 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.scout[0];
-                    player.fuel += player.rewards.scout[1];
+                    player.score += player.rewards.kamikaze[0];
+                    player.fuel += player.rewards.kamikaze[1];
+                    let rect = rectFromPosition(this.position, 10, 10);
+                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
                 }
             }
@@ -447,6 +453,82 @@ const enemy = {
 
         this.draw = function () {
             Helper.drawRotatedImage(game.context, assets['scout'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+        }
+    },
+
+    Kamikaze: function(position) {
+        this.position = position;
+        this.size = 30;
+        this.iSize = this.size;
+        this.rotation;
+        this.dir = random(0, 100) < 50 ? -1 : 1;
+        this.checkPoint;
+        this.angle = 0;
+        this.lifetime = random(1, 3);
+        this.iLifetime = this.lifetime;
+        this.speed = 100;
+        this.unit = 1;
+
+        this.checkCollisionWithPlayerBullets = function () {
+            for (let i = 0; i < player.bullets.length; i++) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
+                    player.bullets[i].dead = true;
+                    player.score += player.rewards.scout[0];
+                    player.fuel += player.rewards.scout[1];
+                    let rect = rectFromPosition(this.position, 10, 10);
+                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
+                    this.dead = true;
+                }
+            }
+        }
+
+        this.shoot = function() {
+
+        }
+
+        this.update = function() {
+
+            this.lifetime -= game.delta;
+
+            if (this.lifetime < 0) {
+                this.shoot();
+                this.dead = true;
+            }
+
+            if (this.lifetime < this.iLifetime / 2) {
+                this.pulse();
+            }
+
+            if (Helper.distance(this.checkPoint, this.position) < 50 || checkPoint == null) {
+                let radius = 250;
+                let x = player.position.x + Math.cos(this.angle) * radius;
+                let y = player.position.y + Math.sin(this.angle) * radius;
+
+                this.checkPoint = new Vector2(x, y);
+                angle += dir * 5;
+            }
+
+            let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
+            direction.normalize();
+            direction.mult(this.speed * game.delta);
+            this.position.add(this.direction);
+
+            this.rotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
+        
+            this.checkCollisionWithPlayerBullets();
+        }
+
+        this.pulse = function() {
+            let i = mapValue(this.lifetime, this.iLifetime, 0, 1, 3);
+            this.size += this.unit * i;
+
+            if (this.size > this.iSize * 1.25 || this.size < this.iSize * 0.75) {
+                this.unit *= -1;
+            }
+        }
+
+        this.draw = function() {
+            Helper.drawRotatedImage(game.context, assets['kamikaze'], this.position.x, this.position.y, this.size, this.size, this.rotation);
         }
     },
 
@@ -590,6 +672,10 @@ class Player {
             scout: [
                 10,
                 5
+            ],
+            kamikaze: [
+                15, 
+                7
             ]
         }
     }
@@ -614,7 +700,7 @@ class Player {
                 this.direction.mult(this.speed * game.delta);
                 this.position.add(this.direction);
 
-                this.rectangle = RectFromPosition(this.position, this.size, this.size);
+                this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
                 let a = this.joystick.position.y - this.joystick.center.y;
                 let b = this.joystick.position.x - this.joystick.center.x;
@@ -623,10 +709,6 @@ class Player {
                 this.fuel -= 4 * game.delta;
 
                 this.shoot();
-
-                if (this.fuel < 1) {
-                    this.dead = true;
-                }
 
                 this.position.toInt();
             }
@@ -642,6 +724,10 @@ class Player {
 
             this.camPos = Vector2.lerp(this.camPos, this.position, 0.01);
             //game.camera.moveTo(this.camPos.x, this.camPos.y);
+
+            if (this.fuel < 1) {
+                this.dead = true;
+            }
         }
     }
 
@@ -814,6 +900,7 @@ var GameScreen = {
 
     draw: function () {
         game.camera.begin();
+        particles.draw();
         player.draw();
         enemy.draw();
         game.camera.end();
@@ -867,8 +954,6 @@ var GameScreen = {
             game.context.fillStyle = textColor;
             game.context.fillText(player.score, game.width / 2, game.height / 10 * 1.5);
         }
-
-        particles.draw();
     },
 
     drawPlayerFuel: function () {

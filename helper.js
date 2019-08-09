@@ -171,7 +171,7 @@ class Rectangle {
     }
 }
 
-function RectFromPosition(pos, w, h) {
+function rectFromPosition(pos, w, h) {
     return new Rectangle(pos.x - w / 2, pos.y - h / 2, w, h);
 }
 
