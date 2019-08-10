@@ -11,11 +11,21 @@ class Game {
         this.height = 600;
         this.delta;
         this.lastUpdate = Date.now();
+
         this.canvas = document.createElement("canvas");
-        document.body.appendChild(this.canvas);
         this.context = this.canvas.getContext("2d");
+
+        this.backBufferCanvas = document.createElement("canvas");
+        this.backBufferContext = this.backBufferCanvas.getContext("2d");
+
+        document.body.appendChild(this.backBufferCanvas);
+
         this.canvas.width = this.width;
         this.canvas.height = this.height;
+
+        this.backBufferCanvas.width = this.width;
+        this.backBufferCanvas.height = this.height;
+
         this.backgroundColor = "rgb(191, 192, 255)";
         this.currentScreenId = gameScreenId;
         this.camera = new Camera(this.context);
@@ -25,13 +35,17 @@ class Game {
         window.addEventListener("resize", () => {
             if (window.innerWidth < this.width) {
                 this.canvas.width = window.innerWidth;
+                this.backBufferCanvas.width = window.innerWidth;
             } else {
                 this.canvas.width = this.width;
+                this.backBufferCanvas.width = this.width;
             }
             if (window.innerHeight < this.height) {
                 this.canvas.height = window.innerHeight;
+                this.backBufferCanvas.height = window.innerHeight;
             } else {
                 this.canvas.height = this.height;
+                this.backBufferCanvas.height = this.height;
             }
         });
 
@@ -69,15 +83,14 @@ class Game {
         this.context.fillRect(0, 0, this.width, this.height);
 
         if (this.c_updateFps < 0) {
-            this.fps = Math.floor(1 / this.delta)
-            this.c_updateFps = 0.1;
+            this.fps = (1 / this.delta).toFixed(2);
+
+            document.getElementById("debug").textContent = `FPS: ${this.fps} | MS: ${(this.delta * 1000).toFixed(0)}`;
+            this.c_updateFps = 0.02;
         } else {
             this.c_updateFps -= this.delta;
         }
 
-        this.context.fillStyle = textColor;
-        this.context.font = "15px Arial";
-        this.context.fillText("FPS: " + this.fps, 28, game.height - 20);
 
         switch (this.currentScreenId) {
             case mainMenuId:
@@ -92,8 +105,9 @@ class Game {
                 AboutScreen.update();
                 AboutScreen.draw();
                 break;
-
         }
+
+        this.backBufferContext.drawImage(this.canvas, 0, 0);
     }
 
     mouseMove(e) {
@@ -290,17 +304,26 @@ var particles = {
 
             settings.density = 10;
             settings.increaseRotation = true;
-            settings.lifespan = new Size(0.01, 0.05);
+            settings.lifespan = new Size(0.005, 0.01);
             settings.onetime = true;
             settings.size = new Size(7, 13);
             settings.speed = new Size(500, 800);
-            settings.systemLifetime = 0.05;
+            settings.systemLifetime = 0.02;
             settings.textures = [
                 assets['circle_purple'],
                 assets['circle_purple_dark']
             ];
 
             return settings;
+        },
+
+        kamikazeExplosion: function () {
+            let settings = particles.configs.scoutExplosion();
+            settings.textures = [
+                premadeAssets.dark_red_circle,
+                premadeAssets.red_bullet
+            ];
+            return settings
         }
     }
 }
@@ -353,6 +376,8 @@ window.onload = () => {
 
 const premadeAssets = {
     bullet: document.createElement('canvas'),
+    red_bullet: document.createElement('canvas'),
+    dark_red_circle: document.createElement('canvas'),
 
     init: function () {
         this.bullet.width = 20;
@@ -363,6 +388,25 @@ const premadeAssets = {
         ctx.arc(10, 10, 10, 0, Math.PI * 2);
         ctx.closePath();
         ctx.fill();
+
+        this.red_bullet.width = 20;
+        this.red_bullet.height = 20;
+        ctx = this.red_bullet.getContext('2d');
+        ctx.fillStyle = 'rgb(128, 38, 86)';
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
+        this.dark_red_circle.width = 20;
+        this.dark_red_circle.height = 20;
+        ctx = this.red_bullet.getContext('2d');
+        ctx.fillStyle = 'rgb(118, 30, 70)';
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
     },
 }
 
@@ -375,6 +419,7 @@ const projectile = {
         this.dead = false;
         this.lifetime = 2;
         this.damage;
+        this.texture = premadeAssets.bullet;
 
         this.update = function () {
             this.lifetime -= game.delta;
@@ -388,7 +433,7 @@ const projectile = {
         }
 
         this.draw = function () {
-            game.context.drawImage(premadeAssets.bullet, this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
+            game.context.drawImage(this.texture, this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
         }
     }
 }
@@ -414,6 +459,7 @@ const enemy = {
                 let b = new projectile.Bullet(this.position, this.direction);
                 b.damage = 10;
                 b.speed = 200;
+                //b.texture = premadeAssets.bullet;
                 enemy.projectiles.push(b);
 
                 this.c_shootingCooldown = shootingCooldown;
@@ -426,8 +472,8 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.kamikaze[0];
-                    player.fuel += player.rewards.kamikaze[1];
+                    player.score += player.rewards.scout[0];
+                    player.fuel += player.rewards.scout[1];
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
@@ -456,13 +502,13 @@ const enemy = {
         }
     },
 
-    Kamikaze: function(position) {
+    Kamikaze: function (position) {
         this.position = position;
         this.size = 30;
         this.iSize = this.size;
         this.rotation;
         this.dir = random(0, 100) < 50 ? -1 : 1;
-        this.checkPoint;
+        this.checkPoint = new Vector2(0, 0);
         this.angle = 0;
         this.lifetime = random(1, 3);
         this.iLifetime = this.lifetime;
@@ -473,20 +519,32 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.scout[0];
-                    player.fuel += player.rewards.scout[1];
+                    player.score += player.rewards.kamikaze[0];
+                    player.fuel += player.rewards.kamikaze[1];
                     let rect = rectFromPosition(this.position, 10, 10);
-                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
+                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
                 }
             }
         }
 
-        this.shoot = function() {
+        this.shoot = function () {
+            let radius = 100;
 
+            for (let i = 0; i < 360; i += 15) {
+                let x = this.position.x + Math.cos(i) * radius;
+                let y = this.position.y + Math.sin(i) * radius;
+                let dir = new Vector2(x - this.position.x, y - this.position.y);
+                dir.normalize();
+                let b = new projectile.Bullet(new Vector2(x, y), dir);
+                b.damage = 10;
+                b.speed = 175;
+                b.texture = premadeAssets.red_bullet;
+                enemy.projectiles.push(b);
+            }
         }
 
-        this.update = function() {
+        this.update = function () {
 
             this.lifetime -= game.delta;
 
@@ -499,35 +557,35 @@ const enemy = {
                 this.pulse();
             }
 
-            if (Helper.distance(this.checkPoint, this.position) < 50 || checkPoint == null) {
+            if (Helper.distance(this.checkPoint == null || this.checkPoint, this.position) < 50) {
                 let radius = 250;
                 let x = player.position.x + Math.cos(this.angle) * radius;
                 let y = player.position.y + Math.sin(this.angle) * radius;
 
                 this.checkPoint = new Vector2(x, y);
-                angle += dir * 5;
+                this.angle += this.dir * 5;
             }
 
             let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
             direction.normalize();
             direction.mult(this.speed * game.delta);
-            this.position.add(this.direction);
+            this.position.add(direction);
 
             this.rotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
-        
+
             this.checkCollisionWithPlayerBullets();
         }
 
-        this.pulse = function() {
+        this.pulse = function () {
             let i = mapValue(this.lifetime, this.iLifetime, 0, 1, 3);
-            this.size += this.unit * i;
+            this.size += this.unit * i / 2;
 
             if (this.size > this.iSize * 1.25 || this.size < this.iSize * 0.75) {
                 this.unit *= -1;
             }
         }
 
-        this.draw = function() {
+        this.draw = function () {
             Helper.drawRotatedImage(game.context, assets['kamikaze'], this.position.x, this.position.y, this.size, this.size, this.rotation);
         }
     },
@@ -537,6 +595,7 @@ const enemy = {
 
     reset: function () {
         this.enemies = [];
+        this.projectiles = [];
         this.c_spawnCooldown = 2;
     },
 
@@ -547,7 +606,7 @@ const enemy = {
         let spawnCooldown = 2;
 
         if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
-            let e = new this.Scout(new Vector2(0, 0));
+            let e = new this.Kamikaze(new Vector2(0, 0));
             this.enemies.push(e);
             this.c_spawnCooldown = spawnCooldown;
         } else {
@@ -674,7 +733,7 @@ class Player {
                 5
             ],
             kamikaze: [
-                15, 
+                15,
                 7
             ]
         }
