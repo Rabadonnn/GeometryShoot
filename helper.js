@@ -220,6 +220,7 @@ function rectFromPosition(pos, w, h) {
             this.viewport.bottom = this.viewport.top + this.viewport.height;
             this.viewport.scale[0] = this.context.canvas.width / this.viewport.width;
             this.viewport.scale[1] = this.context.canvas.height / this.viewport.height;
+            this.rectangle = new Rectangle(this.viewport.left, this.viewport.top, this.viewport.width, this.viewport.height);
         },
         zoomTo: function (z) {
             this.distance = z;

@@ -32,6 +32,8 @@ class Game {
         this.c_updateFps = 0;
         this.fps = 0;
 
+        document.title = "Geometry Shoot";
+
         window.addEventListener("resize", () => {
             if (window.innerWidth < this.width) {
                 this.canvas.width = window.innerWidth;
@@ -78,7 +80,6 @@ class Game {
 
         this.tick();
 
-
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
 
@@ -113,7 +114,7 @@ class Game {
     mouseMove(e) {
         e = event || window.event;
         let mousePos = { x: e.clientX, y: e.clientY };
-        let rect = game.canvas.getBoundingClientRect();
+        let rect = game.backBufferCanvas.getBoundingClientRect();
         let x = mousePos.x - rect.x;
         let y = mousePos.y - rect.y;
         if (x < 0) {
@@ -218,6 +219,8 @@ var particles = {
                 if (this.increaseRotation) {
                     this.rotation = mapValue(this.lifespan, 0, this.initialLifespan, 0, Math.PI * 2) * this.dir;
                 }
+
+                this.position.toInt();
             }
         }
 
@@ -457,8 +460,8 @@ const enemy = {
             if (this.c_shootingCooldown < 0) {
 
                 let b = new projectile.Bullet(this.position, this.direction);
-                b.damage = 10;
-                b.speed = 200;
+                b.damage = 5;
+                b.speed = 175;
                 //b.texture = premadeAssets.bullet;
                 enemy.projectiles.push(b);
 
@@ -538,7 +541,7 @@ const enemy = {
                 dir.normalize();
                 let b = new projectile.Bullet(new Vector2(x, y), dir);
                 b.damage = 10;
-                b.speed = 175;
+                b.speed = 150;
                 b.texture = premadeAssets.red_bullet;
                 enemy.projectiles.push(b);
             }
@@ -574,6 +577,8 @@ const enemy = {
             this.rotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
 
             this.checkCollisionWithPlayerBullets();
+
+            this.position.toInt();
         }
 
         this.pulse = function () {
@@ -606,7 +611,19 @@ const enemy = {
         let spawnCooldown = 2;
 
         if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
-            let e = new this.Kamikaze(new Vector2(0, 0));
+
+            let angle = random(0, 360).toFixed(0);
+            let radius = random(game.width, game.height);
+            let x = player.position.x + Math.cos(angle) * radius;
+            let y = player.position.y + Math.sin(angle) * radius;
+            let pos = new Vector2(x, y);
+            let e;
+            if (random(0, 100) < 30) {
+                e = new this.Kamikaze(pos);
+            } else {
+                e = new this.Scout(pos);
+            }
+
             this.enemies.push(e);
             this.c_spawnCooldown = spawnCooldown;
         } else {
@@ -637,11 +654,15 @@ const enemy = {
 
     draw: function () {
         for (let i = 0; i < this.enemies.length; i++) {
-            this.enemies[i].draw();
+            if (game.camera.rectangle.includes(this.enemies[i].position)) {
+                this.enemies[i].draw();
+            }
         }
 
         for (let i = 0; i < this.projectiles.length; i++) {
-            this.projectiles[i].draw();
+            if (game.camera.rectangle.includes(this.projectiles[i].position)) {
+                this.projectiles[i].draw();
+            }
         }
     }
 }
@@ -652,7 +673,7 @@ class Player {
         this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.fuel = 100;
-        this.speed = 300;
+        this.speed = 175;
         this.direction = new Vector2(0, 0);
         this.size = 40;
         this.idleCheckpoint = this.position;
@@ -661,6 +682,7 @@ class Player {
         this.camPos = this.position;
         this.bullets = [];
         this.c_shootingCooldown = 0;
+
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -744,7 +766,6 @@ class Player {
         this.camPos = this.position;
         this.rotation = 0;
         this.fuel = 100;
-        this.speed = 300;
         this.direction = new Vector2(0, 0);
         this.dead = false;
         this.bullets = [];
@@ -756,6 +777,7 @@ class Player {
             if (this.joystick.hasValue) {
 
                 this.direction = this.joystick.direction();
+                this.direction.normalize();
                 this.direction.mult(this.speed * game.delta);
                 this.position.add(this.direction);
 
@@ -806,7 +828,9 @@ class Player {
 
         if (!this.dead) {
             for (let i = 0; i < this.bullets.length; i++) {
-                this.bullets[i].draw();
+                if (game.camera.rectangle.includes(this.bullets[i].position)) {
+                    this.bullets[i].draw();
+                }
             }
         }
 
@@ -1013,6 +1037,7 @@ var GameScreen = {
             game.context.fillStyle = textColor;
             game.context.fillText(player.score, game.width / 2, game.height / 10 * 1.5);
         }
+
     },
 
     drawPlayerFuel: function () {
