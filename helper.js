@@ -258,3 +258,29 @@ class Size {
         return random(this.x, this.y);
     }
 }
+
+function imgToNegative(image, context) {
+    context.drawImage(image, 0, 0);
+
+    var imgData = context.getImageData(0, 0, image.width, image.height);
+    var data = imgData.data;
+
+    for (var i = 0, len = data.length; i < len; i += 4) {
+        data[i] = 255 - data[i];
+        data[i + 1] = 255 - data[i + 1];
+        data[i + 2] = 255 - data[i + 2];
+    }
+
+    context.putImageData(imgData, 0, 0);
+}
+
+function blendColors(r1, g1, b1, r2, g2, b2, balance) {
+    var bal = Math.min(Math.max(balance, 0), 1);
+    var nbal = 1 - bal;
+    let col = {
+        r: Math.floor(r1 * nbal + r2 * bal),
+        g: Math.floor(g1 * nbal + g2 * bal),
+        b: Math.floor(b1 * nbal + b2 * bal)
+    };
+    return `rgb(${col.r}, ${col.g}, ${col.b})`;
+} 

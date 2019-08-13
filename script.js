@@ -26,7 +26,6 @@ class Game {
         this.backBufferCanvas.width = this.width;
         this.backBufferCanvas.height = this.height;
 
-        this.backgroundColor = "rgb(191, 192, 255)";
         this.currentScreenId = gameScreenId;
         this.camera = new Camera(this.context);
         this.c_updateFps = 0;
@@ -79,6 +78,12 @@ class Game {
         });
 
         this.tick();
+
+        if (player.damaged && !player.dead) {
+            this.backgroundColor = 'white';
+        } else {
+            this.backgroundColor = 'rgb(172, 172, 252)';
+        }
 
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
@@ -133,6 +138,7 @@ class Game {
     }
 }
 
+// const textColor = "white";
 const textColor = "rgb(39, 40, 68)";
 
 class Button {
@@ -143,6 +149,8 @@ class Button {
         this.textColor = textColor;
         this.font = "60px Abel";
         this.clicked = false;
+        this.color = 'rgb(0, 0, 0, 0)';
+        // this.color = 'rgb(170, 170, 255)';
     }
 
     update() {
@@ -162,12 +170,12 @@ class Button {
         if (this.rectangle.includes(mouse)) {
             game.context.strokeStyle = textColor;
         } else {
-            game.context.strokeStyle = 'rgb(170, 170, 255)';
+            game.context.strokeStyle = this.color;
         }
 
-        game.context.fillStyle = 'rgb(170, 170, 255)';
-        game.context.lineWidth = 2;
-        Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, true, true);
+        game.context.fillStyle = this.color;
+        game.context.lineWidth = 3;
+        Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, false, true);
 
         game.context.fillStyle = this.textColor;
         game.context.font = this.font;
@@ -421,7 +429,6 @@ const projectile = {
         this.size = 12;
         this.dead = false;
         this.lifetime = 2;
-        this.damage;
         this.texture = premadeAssets.bullet;
 
         this.update = function () {
@@ -458,11 +465,9 @@ const enemy = {
             let shootingCooldown = 0.75;
 
             if (this.c_shootingCooldown < 0) {
-
                 let b = new projectile.Bullet(this.position, this.direction);
                 b.damage = 5;
-                b.speed = 175;
-                //b.texture = premadeAssets.bullet;
+                b.speed = 250;
                 enemy.projectiles.push(b);
 
                 this.c_shootingCooldown = shootingCooldown;
@@ -475,8 +480,7 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.scout[0];
-                    player.fuel += player.rewards.scout[1];
+                    player.score += player.rewards.scout;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
@@ -494,8 +498,10 @@ const enemy = {
             let b = player.position.x - this.position.x;
             this.rotation = Math.atan2(a, b) + Math.PI / 2;
 
-            this.checkCollisionWithPlayerBullets();
-            this.shoot();
+            if (game.camera.rectangle.includes(this.position)) {
+                this.checkCollisionWithPlayerBullets();
+                this.shoot();
+            }
 
             this.position.toInt();
         }
@@ -522,8 +528,7 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.kamikaze[0];
-                    player.fuel += player.rewards.kamikaze[1];
+                    player.score += player.rewards.kamikaze;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
@@ -549,7 +554,9 @@ const enemy = {
 
         this.update = function () {
 
-            this.lifetime -= game.delta;
+            if (game.camera.rectangle.includes(this.position)) {
+                this.lifetime -= game.delta;
+            }
 
             if (this.lifetime < 0) {
                 this.shoot();
@@ -645,7 +652,8 @@ const enemy = {
                 this.projectiles[i].update();
 
                 if (Helper.distance(this.projectiles[i].position, player.position) < player.size / 2) {
-                    player.fuel -= this.projectiles[i].damage;
+                    player.health -= 1;
+                    player.damaged = true;
                     this.projectiles.splice(i, 1);
                 }
             }
@@ -672,7 +680,7 @@ class Player {
         this.rectangle;
         this.position = new Vector2(0, 0);
         this.rotation = 0;
-        this.fuel = 100;
+        this.health = 3;
         this.speed = 175;
         this.direction = new Vector2(0, 0);
         this.size = 40;
@@ -682,7 +690,7 @@ class Player {
         this.camPos = this.position;
         this.bullets = [];
         this.c_shootingCooldown = 0;
-
+        this.damaged = true;
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -750,14 +758,8 @@ class Player {
         }
 
         this.rewards = {
-            scout: [
-                10,
-                5
-            ],
-            kamikaze: [
-                15,
-                7
-            ]
+            scout: 10,
+            kamikaze: 20
         }
     }
 
@@ -765,15 +767,27 @@ class Player {
         this.position = new Vector2(0, 0);
         this.camPos = this.position;
         this.rotation = 0;
-        this.fuel = 100;
+        this.health = 3;
         this.direction = new Vector2(0, 0);
         this.dead = false;
         this.bullets = [];
         this.score = 0;
+        this.damaged = false;
+        this.dmgCooldown = 0.12;
     }
 
     update() {
         if (!this.dead) {
+
+            if (this.damaged) {
+                this.dmgCooldown -= game.delta;
+
+                if (this.dmgCooldown < 0) {
+                    this.damaged = false;
+                    this.dmgCooldown = 0.05;
+                }
+            }
+
             if (this.joystick.hasValue) {
 
                 this.direction = this.joystick.direction();
@@ -786,8 +800,6 @@ class Player {
                 let a = this.joystick.position.y - this.joystick.center.y;
                 let b = this.joystick.position.x - this.joystick.center.x;
                 this.rotation = Math.atan2(a, b) + 90 * Math.PI / 180;
-
-                this.fuel -= 4 * game.delta;
 
                 this.shoot();
 
@@ -806,7 +818,7 @@ class Player {
             this.camPos = Vector2.lerp(this.camPos, this.position, 0.01);
             //game.camera.moveTo(this.camPos.x, this.camPos.y);
 
-            if (this.fuel < 1) {
+            if (this.health < 1) {
                 this.dead = true;
             }
         }
@@ -835,13 +847,6 @@ class Player {
         }
 
         Helper.drawRotatedImage(game.context, assets['player'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
-
-
-        // game.context.fillStyle = "black";
-        // game.context.beginPath();
-        // game.context.arc(this.position.x, this.position.y, 10, 0, Math.PI * 2);
-        // game.context.closePath();
-        // game.context.fill();
     }
 
     updateIdleState() {
@@ -1024,27 +1029,33 @@ var GameScreen = {
 
             game.context.fillStyle = textColor;
             game.context.font = "40px Abel";
-            game.context.fillText("You ran out of Fuel!", game.width / 2, game.height / 2);
+            game.context.fillText("You have been slain!", game.width / 2, game.height / 2);
             game.context.fillText("Score: " + player.score, game.width / 2, game.height / 2 + 50);
 
             this.restartButton.draw();
             this.menuButton.draw();
         } else {
-            this.drawPlayerFuel();
+            this.drawPlayerHealth();
             this.pauseButton.draw();
 
             game.context.font = "40px Abel";
             game.context.fillStyle = textColor;
-            game.context.fillText(player.score, game.width / 2, game.height / 10 * 1.5);
+            game.context.fillText(player.score, game.width / 2, 40);
         }
 
     },
 
-    drawPlayerFuel: function () {
-        if (player.fuel > 0) {
-            let w = mapValue(player.fuel, 100, 0, 600, 0);
-            game.context.fillStyle = textColor;
-            Helper.roundRect(game.context, 25, 20, w, 18, 10, true, false);
+    drawPlayerHealth: function () {
+        if (player.health > 0) {
+            for (let i = 0; i < player.health; i++) {
+                let x = 35 + (i * 35);
+                game.context.fillStyle = textColor;
+                game.context.lineWidth = 2;
+                game.context.beginPath();
+                game.context.arc(x, 25, 10, 0, Math.PI * 2);
+                game.context.closePath();
+                game.context.fill();
+            }
         }
     }
 };
