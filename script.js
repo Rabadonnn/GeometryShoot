@@ -79,11 +79,9 @@ class Game {
 
         this.tick();
 
-        if (player.damaged && !player.dead) {
-            this.backgroundColor = 'white';
-        } else {
-            this.backgroundColor = 'rgb(172, 172, 252)';
-        }
+
+        this.backgroundColor = 'rgb(172, 172, 252)';
+
 
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
@@ -112,7 +110,7 @@ class Game {
                 AboutScreen.draw();
                 break;
         }
-
+        //this.context.drawImage(assets['backgroundHexagons'], 0, 0);
         this.backBufferContext.drawImage(this.canvas, 0, 0);
     }
 
@@ -352,6 +350,7 @@ var assetNames = [
     'kamikaze'
 ];
 
+
 var assets = {};
 let assetsLoaded = 0;
 function loadAssets() {
@@ -371,12 +370,11 @@ var game = new Game();
 loadAssets();
 
 window.onload = () => {
+    premadeAssets.init();
 
     MainMenuScreen.init();
     AboutScreen.init();
     GameScreen.init();
-
-    premadeAssets.init();
 
     if (assetsLoaded == assetNames.length) {
         document.getElementById("loading").style.display = "none";
@@ -478,13 +476,17 @@ const enemy = {
 
         this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
-                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
                     player.score += player.rewards.scout;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
                 }
+            }
+
+            if (Helper.distance(this.position, player.position) < this.size / 2 + player.size / 2) {
+                this.dead = true;
             }
         }
 
@@ -526,13 +528,17 @@ const enemy = {
 
         this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
-                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
                     player.score += player.rewards.kamikaze;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
                 }
+            }
+
+            if (Helper.distance(this.position, player.position) < this.size / 2 + player.size / 2) {
+                this.dead = true;
             }
         }
 
@@ -544,7 +550,7 @@ const enemy = {
                 let y = this.position.y + Math.sin(i) * radius;
                 let dir = new Vector2(x - this.position.x, y - this.position.y);
                 dir.normalize();
-                let b = new projectile.Bullet(new Vector2(x, y), dir);
+                let b = new projectile.Bullet(new Vector2(this.position.x, this.position.y), dir);
                 b.damage = 10;
                 b.speed = 150;
                 b.texture = premadeAssets.red_bullet;
@@ -611,7 +617,7 @@ const enemy = {
         this.c_spawnCooldown = 2;
     },
 
-    c_spawnCooldown: 2,
+    c_spawnCooldown: 1,
 
     update: function () {
 
@@ -651,7 +657,7 @@ const enemy = {
             } else {
                 this.projectiles[i].update();
 
-                if (Helper.distance(this.projectiles[i].position, player.position) < player.size / 2) {
+                if (Helper.distance(this.projectiles[i].position, player.position) < player.size / 2 + this.projectiles[i].size / 2) {
                     player.health -= 1;
                     player.damaged = true;
                     this.projectiles.splice(i, 1);
@@ -681,7 +687,7 @@ class Player {
         this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.health = 3;
-        this.speed = 175;
+        this.speed = 150;
         this.direction = new Vector2(0, 0);
         this.size = 40;
         this.idleCheckpoint = this.position;
@@ -690,7 +696,8 @@ class Player {
         this.camPos = this.position;
         this.bullets = [];
         this.c_shootingCooldown = 0;
-        this.damaged = true;
+        this.damaged = false;
+        this.spaceBarClicked = false;
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -761,6 +768,20 @@ class Player {
             scout: 10,
             kamikaze: 20
         }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.keyCode == 32 && this.dashes > 0 && !this.dashing && this.joystick.hasValue && !this.spaceBarClicked) {
+                this.dashes--;
+                this.dashing = true;
+                this.spaceBarClicked = true;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.keyCode == 32) {
+                this.spaceBarClicked = false;
+            }
+        })
     }
 
     reset() {
@@ -772,8 +793,26 @@ class Player {
         this.dead = false;
         this.bullets = [];
         this.score = 0;
+
         this.damaged = false;
         this.dmgCooldown = 0.12;
+
+        this.dashing = false;
+        this.dashDuration = 0.4;
+        this.c_dashDuration = this.dashDuration;
+        this.dashes = 3;
+    }
+
+    dash() {
+        if (this.c_dashDuration > 0) {
+            let dir = this.joystick.direction();
+            dir.mult(this.speed * 6 * game.delta);
+            player.position.add(dir);
+            this.c_dashDuration -= game.delta;
+        } else {
+            this.dashing = false;
+            this.c_dashDuration = this.dashDuration;
+        }
     }
 
     update() {
@@ -790,10 +829,14 @@ class Player {
 
             if (this.joystick.hasValue) {
 
-                this.direction = this.joystick.direction();
-                this.direction.normalize();
-                this.direction.mult(this.speed * game.delta);
-                this.position.add(this.direction);
+                if (this.dashing) {
+                    this.dash();
+                } else {
+                    this.direction = this.joystick.direction();
+                    this.direction.normalize();
+                    this.direction.mult(this.speed * game.delta);
+                    this.position.add(this.direction);
+                }
 
                 this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
@@ -815,8 +858,12 @@ class Player {
                 }
             }
 
-            this.camPos = Vector2.lerp(this.camPos, this.position, 0.01);
-            //game.camera.moveTo(this.camPos.x, this.camPos.y);
+            if (this.dashing) {
+                this.camPos = Vector2.lerp(this.camPos, this.position, 0.1);
+            } else {
+                this.camPos = Vector2.lerp(this.camPos, this.position, 0.3);
+            }
+            game.camera.moveTo(this.camPos.x, this.camPos.y);
 
             if (this.health < 1) {
                 this.dead = true;
@@ -1035,7 +1082,7 @@ var GameScreen = {
             this.restartButton.draw();
             this.menuButton.draw();
         } else {
-            this.drawPlayerHealth();
+            this.drawPlayerHealthAndDashes();
             this.pauseButton.draw();
 
             game.context.font = "40px Abel";
@@ -1045,7 +1092,7 @@ var GameScreen = {
 
     },
 
-    drawPlayerHealth: function () {
+    drawPlayerHealthAndDashes: function () {
         if (player.health > 0) {
             for (let i = 0; i < player.health; i++) {
                 let x = 35 + (i * 35);
@@ -1055,6 +1102,20 @@ var GameScreen = {
                 game.context.arc(x, 25, 10, 0, Math.PI * 2);
                 game.context.closePath();
                 game.context.fill();
+            }
+        }
+
+        if (player.dashes > 0) {
+            for (let i = 0; i < player.dashes; i++) {
+                let x = 35 * 5 + (i * 35);
+
+                game.context.strokeStyle = textColor;
+                game.context.lineWidth = 7;
+                game.context.beginPath();
+                game.context.moveTo(x, 25 + 10);
+                game.context.lineTo(x + 10, 25 - 10);
+                game.context.closePath();
+                game.context.stroke();
             }
         }
     }
