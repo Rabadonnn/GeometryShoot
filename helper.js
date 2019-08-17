@@ -37,14 +37,18 @@ const Helper = {
         }
     },
 
-    drawRotatedImage: function (ctx, img, x, y, width, height, rad) {
+    drawRotatedImage: function (ctx, img, x, y, width, height, rad, origin) {
 
         //Set the origin to the center of the image
 
         x = Math.floor(x);
         y = Math.floor(y);
 
-        ctx.translate(x + width / 2, y + height / 2);
+        if (origin) {
+            ctx.translate(x + origin.x, y + origin.y);
+        } else {
+            ctx.translate(x + width / 2, y + height / 2);
+        }
 
         //Rotate the canvas around the origin
         ctx.rotate(rad);

@@ -31,6 +31,8 @@ class Game {
         this.c_updateFps = 0;
         this.fps = 0;
 
+        this.alpha = 1;
+
         document.title = "Geometry Shoot";
 
         window.addEventListener("resize", () => {
@@ -80,8 +82,7 @@ class Game {
         this.tick();
 
 
-        this.backgroundColor = 'rgb(172, 172, 252)';
-
+        this.backgroundColor = `rgb(172, 172, 252, ${this.alpha})`;
 
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
@@ -347,7 +348,9 @@ var assetNames = [
     'scout',
     'circle_purple',
     'circle_purple_dark',
-    'kamikaze'
+    'kamikaze',
+    'turretBase',
+    'turretCannon'
 ];
 
 
@@ -376,6 +379,8 @@ window.onload = () => {
     AboutScreen.init();
     GameScreen.init();
 
+    document.getElementById("loading").innerText = `Loading: ${assetsLoaded}/${assetNames.length}`;
+
     if (assetsLoaded == assetNames.length) {
         document.getElementById("loading").style.display = "none";
         game.run();
@@ -387,6 +392,7 @@ const premadeAssets = {
     bullet: document.createElement('canvas'),
     red_bullet: document.createElement('canvas'),
     dark_red_circle: document.createElement('canvas'),
+    black_bullet: document.createElement('canvas'),
 
     init: function () {
         this.bullet.width = 20;
@@ -416,6 +422,14 @@ const premadeAssets = {
         ctx.closePath();
         ctx.fill();
 
+        this.black_bullet.width = 20;
+        this.black_bullet.height = 20;
+        ctx = this.black_bullet.getContext('2d');
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
     },
 }
 
@@ -452,10 +466,8 @@ const enemy = {
         this.direction;
         this.speed = 125;
         this.size = 30;
-        this.bullets = [];
         this.rotation = 0;
         this.dead = false;
-        this.damage = 10;
 
         this.c_shootingCooldown = 0.75;
 
@@ -519,7 +531,7 @@ const enemy = {
         this.iSize = this.size;
         this.rotation;
         this.dir = random(0, 100) < 50 ? -1 : 1;
-        this.checkPoint = new Vector2(0, 0);
+        this.checkPoint = position;
         this.angle = 0;
         this.lifetime = random(1, 3);
         this.iLifetime = this.lifetime;
@@ -608,6 +620,66 @@ const enemy = {
         }
     },
 
+    Turret: function(position) {
+        this.position = position;
+        this.turretRotation = 0;
+        this.turretPosition;
+        this.turretOrigin;
+        this.speed = 125;
+        this.baseSize = 40;
+        this.dead = false;
+        this.turretWidth = 10;
+        this.turretHeight = 30;
+        this.turretDirection;
+        this.checkPoint;
+        this.c_shootingCooldown = 1;
+
+        this.checkCollisionWithPlayerBullets = function() {
+            for (let i = 0; i < player.bullets.length; i++) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
+                    player.bullets[i].dead = true;
+                    player.score += player.rewards.kamikaze;
+                    let rect = rectFromPosition(this.position, 10, 10);
+                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
+                    this.dead = true;
+                }
+            }
+
+            if (Helper.distance(this.position, player.position) < this.size / 2 + player.size / 2) {
+                this.dead = true;
+            }
+        }
+
+        this.shoot = function() {
+            let shootingCooldown = 1;
+
+            if (this.c_shootingCooldown < 0) {
+
+                this.c_shootingCooldown = shootingCooldown;
+            } else {
+                this.c_shootingCooldown -= game.delta;
+            }
+        }
+
+        this.update = function() {
+            if (Helper.distance(this.checkPoint, this.position) < 50) {
+                let checkPointRect = rectFromPosition(player.position, game.camera.rectangle.w / 2, game.camera.recangle.h / 2);
+                this.checkPoint = Helper.randomPointInRect(checkPointRect);
+            }
+
+            let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
+
+            direction.normalize();
+            direction.mult(game.delta * this.speed);
+            this.position.add(direction);
+        }
+
+        this.draw = function() {
+            Helper.drawRotatedImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.size, this.size);
+            Helper.drawRotatedImage(game.context, assets['turretCannon'], this.turretPosition.x, this.turretPosition.y, this.turretWidth, this.turretHeight);
+        }
+    },
+
     enemies: [],
     projectiles: [],
 
@@ -631,7 +703,7 @@ const enemy = {
             let y = player.position.y + Math.sin(angle) * radius;
             let pos = new Vector2(x, y);
             let e;
-            if (random(0, 100) < 30) {
+            if (random(0, 100) < 100) {
                 e = new this.Kamikaze(pos);
             } else {
                 e = new this.Scout(pos);
