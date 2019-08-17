@@ -622,26 +622,32 @@ const enemy = {
 
     Turret: function(position) {
         this.position = position;
+        this.rotation = 0;
         this.turretRotation = 0;
         this.turretPosition;
-        this.turretOrigin;
+        this.turretOrigin = {
+            x: 20,
+            y: 0
+        };
         this.speed = 125;
         this.baseSize = 40;
         this.dead = false;
-        this.turretWidth = 10;
-        this.turretHeight = 30;
+        this.turretWidth = 15;
+        this.turretHeight = 35;
         this.turretDirection;
-        this.checkPoint;
+        this.checkPoint = this.position;
         this.c_shootingCooldown = 1;
 
         this.checkCollisionWithPlayerBullets = function() {
             for (let i = 0; i < player.bullets.length; i++) {
-                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
+                let contactPoint = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2)
+                if (Helper.distance(contactPoint, player.bullets[i].position) < this.baseSize / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.kamikaze;
+                    player.score += player.rewards.turret;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
+                    popup.popups.push(new popup.Popup("+" + player.rewards.turret, this.position));
                 }
             }
 
@@ -662,9 +668,10 @@ const enemy = {
         }
 
         this.update = function() {
-            if (Helper.distance(this.checkPoint, this.position) < 50) {
-                let checkPointRect = rectFromPosition(player.position, game.camera.rectangle.w / 2, game.camera.recangle.h / 2);
-                this.checkPoint = Helper.randomPointInRect(checkPointRect);
+            this.checkCollisionWithPlayerBullets();
+
+            if (Helper.distance(this.checkPoint, this.position) < 50 || !game.camera.rectangle.includes(this.position)) {
+                this.checkPoint = Helper.randomPointInRect(game.camera.rectangle);
             }
 
             let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
@@ -672,11 +679,16 @@ const enemy = {
             direction.normalize();
             direction.mult(game.delta * this.speed);
             this.position.add(direction);
+            this.position.toInt();
+
+            this.turretRotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
+
+            this.turretPosition = new Vector2(this.position.x, this.position.y + this.baseSize / 2);
         }
 
         this.draw = function() {
-            Helper.drawRotatedImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.size, this.size);
-            Helper.drawRotatedImage(game.context, assets['turretCannon'], this.turretPosition.x, this.turretPosition.y, this.turretWidth, this.turretHeight);
+            Helper.drawRotatedImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
+            Helper.drawRotatedImage(game.context, assets['turretCannon'], this.turretPosition.x, this.turretPosition.y, this.turretWidth, this.turretHeight, this.turretRotation, this.turretOrigin);
         }
     },
 
@@ -698,16 +710,17 @@ const enemy = {
         if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
 
             let angle = random(0, 360).toFixed(0);
-            let radius = random(game.width, game.height);
+            let radius = random(game.width / 2, game.height / 2);
             let x = player.position.x + Math.cos(angle) * radius;
             let y = player.position.y + Math.sin(angle) * radius;
             let pos = new Vector2(x, y);
             let e;
-            if (random(0, 100) < 100) {
-                e = new this.Kamikaze(pos);
-            } else {
-                e = new this.Scout(pos);
+            if (random(0, 100) < 100 && this.enemies.length < 1) {
+                e = new this.Turret(pos);
             }
+            // } else {
+            //     e = new this.Scout(pos);
+            // }
 
             this.enemies.push(e);
             this.c_spawnCooldown = spawnCooldown;
@@ -837,9 +850,10 @@ class Player {
         }
 
         this.rewards = {
-            scout: 10,
-            kamikaze: 20
-        }
+            scout: 5,
+            kamikaze: 10,
+            turret: 15
+        };
 
         window.addEventListener('keydown', (e) => {
             if (e.keyCode == 32 && this.dashes > 0 && !this.dashing && this.joystick.hasValue && !this.spaceBarClicked) {
@@ -984,6 +998,53 @@ class Player {
     }
 }
 
+var popup = {
+    Popup: function(text, position) {
+        this.text = text;
+        this.position = position;
+        this.duration = 0.4;
+        this.iDuration = this.duration;
+        this.font = "35px Abel";
+        this.color = new Color(39, 40, 68, 1);
+        this.dead = false;
+
+        this.update = function() {
+            this.duration -= game.delta;
+
+            if (this.duration < 0) {
+                this.dead = true;
+            }
+        }
+
+        this.draw = function() {
+            this.color.a = mapValue(this.duration, this.iDuration, 0, 1, 0);
+            game.context.font = this.font;
+            game.context.fillStyle = this.color;
+            game.context.textAlign = 'center';
+            game.context.fillText(this.text, this.position.x, this.position.y);
+            game.context.globalAlpha = 1;
+        }
+    },
+
+    popups: [],
+
+    update: function() {
+        for (let i = 0; i < this.popups.length; i++) {
+            if (this.popups[i].dead) {
+                this.popups.splice(i, 1);
+            } else {
+                this.popups[i].update();
+            }
+        }
+    },
+
+    draw: function() {
+        for (let i = 0; i < this.popups.length; i++) {
+            this.popups[i].draw();
+        }
+    }
+}
+
 const player = new Player();
 
 var MainMenuScreen = {
@@ -1094,6 +1155,7 @@ var GameScreen = {
             player.update();
             enemy.update();
             particles.update();
+            popup.update();
         } else {
             this.menuButton.update();
             this.restartButton.update();
@@ -1110,6 +1172,7 @@ var GameScreen = {
         particles.draw();
         player.draw();
         enemy.draw();
+        popup.draw();
         game.camera.end();
 
         if (this.showTip && this.tipCooldown > 0) {

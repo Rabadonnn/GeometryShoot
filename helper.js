@@ -43,7 +43,6 @@ const Helper = {
 
         x = Math.floor(x);
         y = Math.floor(y);
-
         if (origin) {
             ctx.translate(x + origin.x, y + origin.y);
         } else {
@@ -288,3 +287,24 @@ function blendColors(r1, g1, b1, r2, g2, b2, balance) {
     };
     return `rgb(${col.r}, ${col.g}, ${col.b})`;
 } 
+
+function color(r, g, b, a) {
+    if (a) {
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+    } else {
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+}
+
+class Color {
+    constructor(r, g, b, a) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+        this.a = a;
+    }
+
+    toString() {
+        return color(this.r, this.g, this.b, this.a);
+    }
+}
