@@ -334,6 +334,15 @@ var particles = {
                 premadeAssets.red_bullet
             ];
             return settings
+        },
+
+        turretExplosion: function() {
+            let settings = particles.configs.kamikazeExplosion();
+            settings.textures = [
+                premadeAssets.black_bullet,
+                premadeAssets.dark_red_circle
+            ];
+            return settings;
         }
     }
 }
@@ -563,7 +572,6 @@ const enemy = {
                 let dir = new Vector2(x - this.position.x, y - this.position.y);
                 dir.normalize();
                 let b = new projectile.Bullet(new Vector2(this.position.x, this.position.y), dir);
-                b.damage = 10;
                 b.speed = 150;
                 b.texture = premadeAssets.red_bullet;
                 enemy.projectiles.push(b);
@@ -620,32 +628,24 @@ const enemy = {
         }
     },
 
-    Turret: function(position) {
+    Turret: function (position) {
         this.position = position;
         this.rotation = 0;
-        this.turretRotation = 0;
-        this.turretPosition;
-        this.turretOrigin = {
-            x: 20,
-            y: 0
-        };
         this.speed = 125;
         this.baseSize = 40;
         this.dead = false;
-        this.turretWidth = 15;
-        this.turretHeight = 35;
-        this.turretDirection;
         this.checkPoint = this.position;
         this.c_shootingCooldown = 1;
+        this.c_standingCooldown;
 
-        this.checkCollisionWithPlayerBullets = function() {
+        this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
-                let contactPoint = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2)
+                let contactPoint = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2);
                 if (Helper.distance(contactPoint, player.bullets[i].position) < this.baseSize / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
                     player.score += player.rewards.turret;
-                    let rect = rectFromPosition(this.position, 10, 10);
-                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
+                    let rect = rectFromPosition(this.position, this.baseSize, this.baseSize);
+                    particles.new(rect, particles.configs.turretExplosion());
                     this.dead = true;
                     popup.popups.push(new popup.Popup("+" + player.rewards.turret, this.position));
                 }
@@ -656,22 +656,40 @@ const enemy = {
             }
         }
 
-        this.shoot = function() {
-            let shootingCooldown = 1;
+        this.shoot = function () {
+
+            if (this.bulletDirection == null) {
+                this.bulletDirection = new Vector2(player.position.x - this.position.x, player.position.y - this.position.y);
+            }
+
+            let shootingCooldown = 0.2;
 
             if (this.c_shootingCooldown < 0) {
-
+                let pos = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2);
+                let b = new projectile.Bullet(pos, this.bulletDirection);
+                b.lifetime = 2;
+                b.speed = 200;
+                b.texture = premadeAssets.black_bullet; 
+                enemy.projectiles.push(b);
                 this.c_shootingCooldown = shootingCooldown;
             } else {
                 this.c_shootingCooldown -= game.delta;
+                this.bulletDirection = null;
             }
         }
 
-        this.update = function() {
+        this.update = function () {
             this.checkCollisionWithPlayerBullets();
 
-            if (Helper.distance(this.checkPoint, this.position) < 50 || !game.camera.rectangle.includes(this.position)) {
-                this.checkPoint = Helper.randomPointInRect(game.camera.rectangle);
+            if (Helper.distance(this.checkPoint, this.position) < 100 || !game.camera.rectangle.includes(this.position)) {
+                let standingCooldown = 1.5;
+                if (this.c_standingCooldown > 0) {
+                    this.shoot();
+                    this.c_standingCooldown -= game.delta;
+                } else {
+                    this.c_standingCooldown = standingCooldown;
+                    this.checkPoint = Helper.randomPointInRect(game.camera.rectangle);
+                }
             }
 
             let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
@@ -680,15 +698,10 @@ const enemy = {
             direction.mult(game.delta * this.speed);
             this.position.add(direction);
             this.position.toInt();
-
-            this.turretRotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
-
-            this.turretPosition = new Vector2(this.position.x, this.position.y + this.baseSize / 2);
         }
 
-        this.draw = function() {
+        this.draw = function () {
             Helper.drawRotatedImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
-            Helper.drawRotatedImage(game.context, assets['turretCannon'], this.turretPosition.x, this.turretPosition.y, this.turretWidth, this.turretHeight, this.turretRotation, this.turretOrigin);
         }
     },
 
@@ -702,10 +715,19 @@ const enemy = {
     },
 
     c_spawnCooldown: 1,
+    
+    maxEnemyCount: 4,
+
+    c_enemyCountIncreaseCD: 3,
 
     update: function () {
 
-        let spawnCooldown = 2;
+        if (this.c_enemyCountIncreaseCD < 0) {
+            this.maxEnemyCount++;
+            this.c_enemyCountIncreaseCD = random(this.maxEnemyCount / 2, this.maxEnemyCount);
+        } else {
+            this.c_enemyCountIncreaseCD -= game.delta;
+        }
 
         if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
 
@@ -715,14 +737,23 @@ const enemy = {
             let y = player.position.y + Math.sin(angle) * radius;
             let pos = new Vector2(x, y);
             let e;
-            if (random(0, 100) < 100 && this.enemies.length < 1) {
-                e = new this.Turret(pos);
-            }
-            // } else {
-            //     e = new this.Scout(pos);
-            // }
+            
+            if (this.enemies.length < this.maxEnemyCount) {
 
-            this.enemies.push(e);
+                let rand = random(0, 100);
+
+                if (rand < 20) {
+                    e = new this.Turret(pos);
+                } else if (rand < 60) {
+                    e = new this.Scout(pos);
+                } else {
+                    e = new this.Kamikaze(pos);
+                }
+
+                this.enemies.push(e);
+            }
+
+            let spawnCooldown = random(0.5, 2);
             this.c_spawnCooldown = spawnCooldown;
         } else {
             this.c_spawnCooldown -= game.delta;
@@ -783,6 +814,9 @@ class Player {
         this.c_shootingCooldown = 0;
         this.damaged = false;
         this.spaceBarClicked = false;
+
+        this.addDashCooldown = 2;
+        this.addHealthCooldown = 5;
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -890,19 +924,37 @@ class Player {
     }
 
     dash() {
+        if (this.dashDirection == null) {
+            this.dashDirection = this.joystick.direction();
+        }
         if (this.c_dashDuration > 0) {
-            let dir = this.joystick.direction();
-            dir.mult(this.speed * 6 * game.delta);
-            player.position.add(dir);
+            this.dashDirection.normalize();
+            this.dashDirection.mult(this.speed * 6 * game.delta);
+            player.position.add(this.dashDirection);
             this.c_dashDuration -= game.delta;
         } else {
             this.dashing = false;
+            this.dashDirection = null;
             this.c_dashDuration = this.dashDuration;
         }
     }
 
     update() {
         if (!this.dead) {
+
+            if (this.addHealthCooldown < 0) {
+                this.health++;
+                this.addHealthCooldown = 5;
+            } else if (this.health < 3) {
+                this.addHealthCooldown -= game.delta;
+            }
+
+            if (this.addDashCooldown < 0) {
+                this.dashes++;
+                this.addDashCooldown = 2;
+            } else if (this.dashes < 3) {
+                this.addDashCooldown -= game.delta;
+            }
 
             if (this.damaged) {
                 this.dmgCooldown -= game.delta;
@@ -913,16 +965,14 @@ class Player {
                 }
             }
 
-            if (this.joystick.hasValue) {
+            if (this.dashing) {
+                this.dash();
+            } else if (this.joystick.hasValue) {
 
-                if (this.dashing) {
-                    this.dash();
-                } else {
-                    this.direction = this.joystick.direction();
-                    this.direction.normalize();
-                    this.direction.mult(this.speed * game.delta);
-                    this.position.add(this.direction);
-                }
+                this.direction = this.joystick.direction();
+                this.direction.normalize();
+                this.direction.mult(this.speed * game.delta);
+                this.position.add(this.direction);
 
                 this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
@@ -999,7 +1049,7 @@ class Player {
 }
 
 var popup = {
-    Popup: function(text, position) {
+    Popup: function (text, position) {
         this.text = text;
         this.position = position;
         this.duration = 0.4;
@@ -1008,7 +1058,7 @@ var popup = {
         this.color = new Color(39, 40, 68, 1);
         this.dead = false;
 
-        this.update = function() {
+        this.update = function () {
             this.duration -= game.delta;
 
             if (this.duration < 0) {
@@ -1016,7 +1066,7 @@ var popup = {
             }
         }
 
-        this.draw = function() {
+        this.draw = function () {
             this.color.a = mapValue(this.duration, this.iDuration, 0, 1, 0);
             game.context.font = this.font;
             game.context.fillStyle = this.color;
@@ -1028,7 +1078,7 @@ var popup = {
 
     popups: [],
 
-    update: function() {
+    update: function () {
         for (let i = 0; i < this.popups.length; i++) {
             if (this.popups[i].dead) {
                 this.popups.splice(i, 1);
@@ -1038,7 +1088,7 @@ var popup = {
         }
     },
 
-    draw: function() {
+    draw: function () {
         for (let i = 0; i < this.popups.length; i++) {
             this.popups[i].draw();
         }
