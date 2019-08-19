@@ -37,7 +37,7 @@ const Helper = {
         }
     },
 
-    drawRotatedImage: function (ctx, img, x, y, width, height, rad, origin) {
+    drawImage: function (ctx, img, x, y, width, height, rad, origin) {
 
         //Set the origin to the center of the image
 
@@ -49,14 +49,15 @@ const Helper = {
             ctx.translate(x + width / 2, y + height / 2);
         }
 
-        //Rotate the canvas around the origin
-        ctx.rotate(rad);
+        if (rad) {
+            ctx.rotate(rad);
+        }
 
-        //draw the image    
         ctx.drawImage(img, width / 2 * (-1), height / 2 * (-1), width, height);
 
-        //reset the canvas  
-        ctx.rotate(rad * (-1));
+        if (rad) {
+            ctx.rotate(rad * (-1));
+        }
         ctx.translate((x + width / 2) * (-1), (y + height / 2) * (-1));
     },
 
@@ -121,6 +122,12 @@ class Vector2 {
 
     static copy(v) {
         return new Vector2(v.x, v.y);
+    }
+
+    static normalized(v) {
+        let u = Vector2.copy(v);
+        u.normalize();
+        return u;
     }
 
     toInt() {
@@ -286,7 +293,7 @@ function blendColors(r1, g1, b1, r2, g2, b2, balance) {
         b: Math.floor(b1 * nbal + b2 * bal)
     };
     return `rgb(${col.r}, ${col.g}, ${col.b})`;
-} 
+}
 
 function color(r, g, b, a) {
     if (a) {

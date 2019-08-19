@@ -336,7 +336,7 @@ var particles = {
             return settings
         },
 
-        turretExplosion: function() {
+        turretExplosion: function () {
             let settings = particles.configs.kamikazeExplosion();
             settings.textures = [
                 premadeAssets.black_bullet,
@@ -359,7 +359,9 @@ var assetNames = [
     'circle_purple_dark',
     'kamikaze',
     'turretBase',
-    'turretCannon'
+    'turretCannon',
+    'dangerSign',
+    'pentagon'
 ];
 
 
@@ -466,6 +468,35 @@ const projectile = {
         this.draw = function () {
             game.context.drawImage(this.texture, this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
         }
+    },
+
+    bombFragment: function(position, direction) {
+        this.position = Vector2.copy(position);
+        this.direction = Vector2.copy(direction);
+        this.speed = 1400;
+        this.size = 18;
+        this.dead = false;
+        this.lifetime = 0.05;
+        this.initialLifetime = this.lifetime;
+        this.texture = assets['pentagon'];
+        this.rotation = 0;
+
+        this.update = function () {
+            this.lifetime -= game.delta;
+            this.direction.normalize();
+            this.direction.mult(game.delta * this.speed);
+            this.position.add(this.direction);
+            if (this.lifetime < 0) {
+                this.dead = true;
+            }
+            this.position.toInt();
+
+            this.rotation += mapValue(this.lifetime, this.initialLifetime, 0, 0, Math.PI * 2);
+        }
+
+        this.draw = function () {
+            Helper.drawImage(game.context, this.texture, this.position.x, this.position.y, this.size, this.size, this.rotation);
+        }
     }
 }
 
@@ -477,6 +508,7 @@ const enemy = {
         this.size = 30;
         this.rotation = 0;
         this.dead = false;
+        this.bullets = [];
 
         this.c_shootingCooldown = 0.75;
 
@@ -487,7 +519,7 @@ const enemy = {
                 let b = new projectile.Bullet(this.position, this.direction);
                 b.damage = 5;
                 b.speed = 250;
-                enemy.projectiles.push(b);
+                this.bullets.push(b);
 
                 this.c_shootingCooldown = shootingCooldown;
             } else {
@@ -527,10 +559,22 @@ const enemy = {
             }
 
             this.position.toInt();
+
+            for (let i = 0; i < this.bullets.length; i++) {
+                if (this.bullets[i].dead) {
+                    this.bullets.splice(i, 1);
+                } else {
+                    this.bullets[i].update();
+                }
+            }
         }
 
         this.draw = function () {
-            Helper.drawRotatedImage(game.context, assets['scout'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+            Helper.drawImage(game.context, assets['scout'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+
+            for (let i = 0; i < this.bullets.length; i++) {
+                this.bullets[i].draw();
+            }
         }
     },
 
@@ -564,11 +608,9 @@ const enemy = {
         }
 
         this.shoot = function () {
-            let radius = 100;
-
             for (let i = 0; i < 360; i += 15) {
-                let x = this.position.x + Math.cos(i) * radius;
-                let y = this.position.y + Math.sin(i) * radius;
+                let x = this.position.x + Math.cos(i);
+                let y = this.position.y + Math.sin(i);
                 let dir = new Vector2(x - this.position.x, y - this.position.y);
                 dir.normalize();
                 let b = new projectile.Bullet(new Vector2(this.position.x, this.position.y), dir);
@@ -624,7 +666,7 @@ const enemy = {
         }
 
         this.draw = function () {
-            Helper.drawRotatedImage(game.context, assets['kamikaze'], this.position.x, this.position.y, this.size, this.size, this.rotation);
+            Helper.drawImage(game.context, assets['kamikaze'], this.position.x, this.position.y, this.size, this.size, this.rotation);
         }
     },
 
@@ -669,7 +711,7 @@ const enemy = {
                 let b = new projectile.Bullet(pos, this.bulletDirection);
                 b.lifetime = 2;
                 b.speed = 200;
-                b.texture = premadeAssets.black_bullet; 
+                b.texture = premadeAssets.black_bullet;
                 enemy.projectiles.push(b);
                 this.c_shootingCooldown = shootingCooldown;
             } else {
@@ -701,7 +743,67 @@ const enemy = {
         }
 
         this.draw = function () {
-            Helper.drawRotatedImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
+            Helper.drawImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
+        }
+    },
+
+    Bomb: function (position, target) {
+        this.position = position;
+        this.target = Vector2.copy(target);
+        this.distanceToTarget = Math.floor(Helper.distance(position, this.target));
+        this.speed = 300;
+        this.rotation = 0;
+        this.size = 40;
+        this.cooldown = 2;
+        this.dangerSize = this.size;
+        this.unit = 1;
+        this.dead = false;
+
+        this.explode = function () {
+
+            for (let i = 0; i < 360; i += 10) {
+                let x = this.position.x + Math.cos(i);
+                let y = this.position.y + Math.sin(i);
+                let dir = new Vector2(x - this.position.x, y - this.position.y);
+                dir.normalize();
+                let b = new projectile.bombFragment(new Vector2(this.position.x, this.position.y), dir);
+                enemy.projectiles.push(b);
+            }
+
+            this.dead = true;
+        }
+
+        this.update = function () {
+            if (this.cooldown < 0) {
+                let direction = new Vector2(this.target.x - position.x, this.target.y - position.y);
+                direction.normalize();
+                direction.mult(this.speed * game.delta);
+                this.position.add(direction);
+
+                this.position.toInt();
+
+                this.rotation = mapValue(Helper.distance(this.position, this.target), this.distanceToTarget, 0, 0, 2 * Math.PI);
+
+                if (Helper.distance(this.position, this.target) < 10) {
+                    this.explode();
+                }
+
+            } else {
+                if (this.dangerSize > this.size * 1.25 || this.dangerSize < this.size * 0.75) {
+                    this.unit *= -1;
+                }
+                this.dangerSize += this.unit;
+
+                this.cooldown -= game.delta;
+            }
+        }
+
+        this.draw = function () {
+            if (this.cooldown < 0) {
+                Helper.drawImage(game.context, assets['pentagon'], this.position.x, this.position.y, this.size, this.size, this.rotation);
+            } else {
+                Helper.drawImage(game.context, assets['dangerSign'], this.target.x, this.target.y, this.dangerSize, this.dangerSize);
+            }
         }
     },
 
@@ -715,7 +817,7 @@ const enemy = {
     },
 
     c_spawnCooldown: 1,
-    
+
     maxEnemyCount: 4,
 
     c_enemyCountIncreaseCD: 3,
@@ -737,20 +839,22 @@ const enemy = {
             let y = player.position.y + Math.sin(angle) * radius;
             let pos = new Vector2(x, y);
             let e;
-            
+
             if (this.enemies.length < this.maxEnemyCount) {
 
                 let rand = random(0, 100);
 
-                if (rand < 20) {
-                    e = new this.Turret(pos);
-                } else if (rand < 60) {
-                    e = new this.Scout(pos);
-                } else {
-                    e = new this.Kamikaze(pos);
-                }
+                // if (rand < 20) {
+                //     e = new this.Turret(pos);
+                // } else if (rand < 60) {
+                //     e = new this.Scout(pos);
+                // } else {
+                //     e = new this.Kamikaze(pos);
+                // }
 
-                this.enemies.push(e);
+                this.projectiles.push(new this.Bomb(pos, player.position));
+
+                //this.enemies.push(e);
             }
 
             let spawnCooldown = random(0.5, 2);
@@ -921,6 +1025,8 @@ class Player {
         this.dashDuration = 0.4;
         this.c_dashDuration = this.dashDuration;
         this.dashes = 3;
+
+        this.camSpeed = 0.01;
     }
 
     dash() {
@@ -997,7 +1103,7 @@ class Player {
             if (this.dashing) {
                 this.camPos = Vector2.lerp(this.camPos, this.position, 0.1);
             } else {
-                this.camPos = Vector2.lerp(this.camPos, this.position, 0.3);
+                this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
             }
             game.camera.moveTo(this.camPos.x, this.camPos.y);
 
@@ -1029,7 +1135,7 @@ class Player {
             }
         }
 
-        Helper.drawRotatedImage(game.context, assets['player'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+        Helper.drawImage(game.context, assets['player'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
     }
 
     updateIdleState() {
