@@ -87,6 +87,7 @@ class Game {
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
 
+
         if (this.c_updateFps < 0) {
             this.fps = (1 / this.delta).toFixed(2);
 
@@ -470,7 +471,7 @@ const projectile = {
         }
     },
 
-    bombFragment: function(position, direction) {
+    bombFragment: function (position, direction) {
         this.position = Vector2.copy(position);
         this.direction = Vector2.copy(direction);
         this.speed = 1400;
@@ -565,6 +566,12 @@ const enemy = {
                     this.bullets.splice(i, 1);
                 } else {
                     this.bullets[i].update();
+
+                    if (player.rectangle.includes(this.bullets[i].position)) {
+                        player.health -= 1;
+                        player.damaged = true;
+                        this.bullets.splice(i, 1);
+                    }
                 }
             }
         }
@@ -673,7 +680,7 @@ const enemy = {
     Turret: function (position) {
         this.position = position;
         this.rotation = 0;
-        this.speed = 125;
+        this.speed = 225;
         this.baseSize = 40;
         this.dead = false;
         this.checkPoint = this.position;
@@ -730,7 +737,7 @@ const enemy = {
                     this.c_standingCooldown -= game.delta;
                 } else {
                     this.c_standingCooldown = standingCooldown;
-                    this.checkPoint = Helper.randomPointInRect(game.camera.rectangle);
+                    this.checkPoint = Helper.randomPointInRect(rectFromPosition(player.position, game.width / 2, game.height / 2));
                 }
             }
 
@@ -816,13 +823,31 @@ const enemy = {
         this.c_spawnCooldown = 2;
     },
 
+    kamikazeUnlocked: false,
+    turretUnlocked: false,
+    bombUnlocked: false,
+
     c_spawnCooldown: 1,
 
     maxEnemyCount: 4,
 
     c_enemyCountIncreaseCD: 3,
 
+    bombSpawnCD: 3,
+
     update: function () {
+
+        if (player.score > 80 && this.bombUnlocked == false) {
+            this.bombUnlocked = true;
+        }
+
+        if (player.score > 50 && this.kamikazeUnlocked == false) {
+            this.kamikazeUnlocked = true;
+        }
+
+        if (player.score > 120 && this.turretUnlocked == false) {
+            this.turretUnlocked = true;
+        }
 
         if (this.c_enemyCountIncreaseCD < 0) {
             this.maxEnemyCount++;
@@ -833,34 +858,23 @@ const enemy = {
 
         if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
 
-            let angle = random(0, 360).toFixed(0);
-            let radius = random(game.width / 2, game.height / 2);
-            let x = player.position.x + Math.cos(angle) * radius;
-            let y = player.position.y + Math.sin(angle) * radius;
-            let pos = new Vector2(x, y);
-            let e;
+            let pos = this.chooseSpawnPos();
 
             if (this.enemies.length < this.maxEnemyCount) {
-
-                let rand = random(0, 100);
-
-                // if (rand < 20) {
-                //     e = new this.Turret(pos);
-                // } else if (rand < 60) {
-                //     e = new this.Scout(pos);
-                // } else {
-                //     e = new this.Kamikaze(pos);
-                // }
-
-                this.projectiles.push(new this.Bomb(pos, player.position));
-
-                //this.enemies.push(e);
+                this.spawnEnemy(pos);
             }
 
             let spawnCooldown = random(0.5, 2);
             this.c_spawnCooldown = spawnCooldown;
         } else {
             this.c_spawnCooldown -= game.delta;
+        }
+
+        if (this.bombSpawnCD < 0 && this.bombUnlocked) {
+            this.projectiles.push(new this.Bomb(this.chooseSpawnPos(), player.position));
+            this.bombSpawnCD = random(1, 4);
+        } else {
+            this.bombSpawnCD -= game.delta;
         }
 
         for (let i = 0; i < this.enemies.length; i++) {
@@ -877,7 +891,7 @@ const enemy = {
             } else {
                 this.projectiles[i].update();
 
-                if (Helper.distance(this.projectiles[i].position, player.position) < player.size / 2 + this.projectiles[i].size / 2) {
+                if (player.rectangle.includes(this.projectiles[i].position)) {
                     player.health -= 1;
                     player.damaged = true;
                     this.projectiles.splice(i, 1);
@@ -898,16 +912,50 @@ const enemy = {
                 this.projectiles[i].draw();
             }
         }
+    },
+
+    chooseSpawnPos() {
+        let angle = random(0, 360).toFixed(0);
+        let radius = random(game.width / 2, game.height / 2);
+        let x = player.position.x + Math.cos(angle) * radius;
+        let y = player.position.y + Math.sin(angle) * radius;
+        let pos = new Vector2(x, y);
+        return pos;
+    },
+
+    spawnEnemy(pos) {
+        let e;
+
+        let rand = random(0, 100);
+
+        if (rand < 20) {
+            if (this.turretUnlocked) {
+                e = new this.Turret(pos);
+            } else {
+                this.spawnEnemy(pos);
+            }
+        } else if (rand < 60) {
+            e = new this.Scout(pos);
+        } else {
+            if (this.kamikazeUnlocked) {
+                e = new this.Kamikaze(pos);
+            } else {
+                this.spawnEnemy(pos);
+            }
+        }
+
+        if (e) {
+            this.enemies.push(e);
+        }
     }
 }
 
 class Player {
     constructor() {
-        this.rectangle;
         this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.health = 3;
-        this.speed = 150;
+        this.speed = 200;
         this.direction = new Vector2(0, 0);
         this.size = 40;
         this.idleCheckpoint = this.position;
@@ -1026,7 +1074,9 @@ class Player {
         this.c_dashDuration = this.dashDuration;
         this.dashes = 3;
 
-        this.camSpeed = 0.01;
+        this.rectangle = rectFromPosition(this.position, this.size, this.size);
+
+        this.camSpeed = 0.03;
     }
 
     dash() {
@@ -1050,14 +1100,14 @@ class Player {
 
             if (this.addHealthCooldown < 0) {
                 this.health++;
-                this.addHealthCooldown = 5;
+                this.addHealthCooldown = 10;
             } else if (this.health < 3) {
                 this.addHealthCooldown -= game.delta;
             }
 
             if (this.addDashCooldown < 0) {
                 this.dashes++;
-                this.addDashCooldown = 2;
+                this.addDashCooldown = 4;
             } else if (this.dashes < 3) {
                 this.addDashCooldown -= game.delta;
             }
@@ -1103,7 +1153,8 @@ class Player {
             if (this.dashing) {
                 this.camPos = Vector2.lerp(this.camPos, this.position, 0.1);
             } else {
-                this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
+                //this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
+                this.camPos = this.position;
             }
             game.camera.moveTo(this.camPos.x, this.camPos.y);
 
@@ -1136,6 +1187,9 @@ class Player {
         }
 
         Helper.drawImage(game.context, assets['player'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+
+        // game.context.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        // game.context.fillRect(this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h);
     }
 
     updateIdleState() {
