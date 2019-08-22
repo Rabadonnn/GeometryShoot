@@ -97,7 +97,6 @@ class Game {
             this.c_updateFps -= this.delta;
         }
 
-
         switch (this.currentScreenId) {
             case mainMenuId:
                 MainMenuScreen.update();
@@ -362,7 +361,17 @@ var assetNames = [
     'turretBase',
     'turretCannon',
     'dangerSign',
-    'pentagon'
+    'pentagon',
+
+    'Hex(1)',
+    'Hex(2)',
+    'Hex(3)',
+    'Hex(4)',
+    'Hex(5)',
+    'Hex(6)',
+    'Hex(7)',
+    'Hex(8)',
+    'Hex(9)',
 ];
 
 
@@ -1327,6 +1336,7 @@ function resetGameScreen() {
     gamePaused = false;
     game.showTip = true;
     game.tipCooldown = 1.4;
+    background.elements.length = 0;
 }
 var GameScreen = {
 
@@ -1358,6 +1368,7 @@ var GameScreen = {
     },
 
     update: function () {
+        background.update();
         this.pauseButton.update();
         player.joystick.update();
 
@@ -1379,6 +1390,7 @@ var GameScreen = {
 
     draw: function () {
         game.camera.begin();
+        background.draw();
         particles.draw();
         player.draw();
         enemy.draw();
@@ -1490,5 +1502,73 @@ var AboutScreen = {
         game.context.fillText("feel free to contact me at", game.width / 2, game.height / 2 + 35);
         game.context.fillText("solomonmihai10@gmail.com", game.width / 2, game.height / 2 + 70);
         this.backButton.draw();
+    }
+}
+
+var background = {
+
+    Element: function(position) {
+        this.position = position;
+        this.rotationIncrement = random(0, 100) < 50 ? -Math.PI / 180 / 4 : Math.PI / 180 / 4;
+        this.texture = assets[`Hex(${Math.floor(random(1, 9))})`];
+        this.speed = random(25, 75);
+        this.scale = Math.floor(random(0.3, 0.9));
+        this.dead = false;
+        this.rotation = Math.floor(random(0, 360)) * Math.PI / 180;
+
+        this.update = function() {
+            let playerArea = rectFromPosition(player.position, game.camera.rectangle.w * 1.5, game.camera.rectangle.h * 1.5);
+            if (playerArea.includes(this.position) == false) {
+                this.dead = false;
+            }
+            let playerDir = player.joystick.direction();
+            this.direction = new Vector2(-playerDir.x, -playerDir.y);
+            this.direction.normalize();
+            this.direction.mult(game.delta * this.speed);
+            this.position.add(this.direction);
+            this.rotation += this.rotationIncrement;
+        }
+
+        this.draw = function() {
+            Helper.drawImage(game.context, this.texture, this.position.x, this.position.y, this.texture.width * this.scale, this.texture.height * this.scale, this.rotation);
+        }
+    },
+
+    chooseSpawnPosition() {
+        let playerArea = rectFromPosition(player.position, game.camera.rectangle.w * 1.5, game.camera.rectangle.h * 1.5);
+        let pos = Helper.randomPointInRect(playerArea);
+        if (game.camera.rectangle.includes(pos)) {
+            return this.chooseSpawnPosition();
+        } else {
+            return pos;
+        }
+    },
+
+    elements: [],
+    elementsLimit: 75,
+    spawnCooldown: 0.1,
+
+    update: function() {
+
+        if (this.spawnCooldown < 0 && this.elements.length < this.elementsLimit) {
+            this.elements.push(new this.Element(this.chooseSpawnPosition()));
+            this.spawnCooldown = 1;
+        } else {
+            this.spawnCooldown -= game.delta;
+        }
+
+        for (let i = 0; i < this.elements.length; i++) {
+            if (this.elements[i].dead) {
+                this.elements.splice(i, 1);
+            } else {
+                this.elements[i].update();
+            }
+        }
+    },
+
+    draw: function() {
+        for (let i = 0; i < this.elements.length; i++) {
+            this.elements[i].draw();
+        }
     }
 }
