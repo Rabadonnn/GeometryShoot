@@ -315,3 +315,7 @@ class Color {
         return color(this.r, this.g, this.b, this.a);
     }
 }
+
+function createFont(size) {
+    return `${size} Arial Black`
+}

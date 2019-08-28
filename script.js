@@ -7,8 +7,6 @@ var mouseClicked;
 
 class Game {
     constructor() {
-        this.width = 800;
-        this.height = 600;
         this.delta;
         this.lastUpdate = Date.now();
 
@@ -20,37 +18,34 @@ class Game {
 
         document.body.appendChild(this.backBufferCanvas);
 
-        this.canvas.width = this.width;
-        this.canvas.height = this.height;
-
-        this.backBufferCanvas.width = this.width;
-        this.backBufferCanvas.height = this.height;
-
-        this.currentScreenId = gameScreenId;
+        this.currentScreenId = mainMenuId;
         this.camera = new Camera(this.context);
         this.c_updateFps = 0;
         this.fps = 0;
 
         this.alpha = 1;
+        this.aspectRatio = 16 / 9;
+        this.inverseAspectRatio = 9 / 16;
 
-        document.title = "Geometry Shoot";
+        this.resizeCallback = () => {
+            this.width = window.innerWidth;
+            this.height = this.width / this.aspectRatio;
 
-        window.addEventListener("resize", () => {
-            if (window.innerWidth < this.width) {
-                this.canvas.width = window.innerWidth;
-                this.backBufferCanvas.width = window.innerWidth;
-            } else {
-                this.canvas.width = this.width;
-                this.backBufferCanvas.width = this.width;
+            if (this.height > window.innerHeight) {
+                this.height = window.innerHeight;
+                this.width = this.height / this.inverseAspectRatio;
             }
-            if (window.innerHeight < this.height) {
-                this.canvas.height = window.innerHeight;
-                this.backBufferCanvas.height = window.innerHeight;
-            } else {
-                this.canvas.height = this.height;
-                this.backBufferCanvas.height = this.height;
-            }
-        });
+
+            this.canvas.width = this.width;
+            this.canvas.height = this.height;
+
+            this.backBufferCanvas.width = this.width;
+            this.backBufferCanvas.height = this.height;
+        }
+
+        this.resizeCallback();
+
+        window.addEventListener("resize", this.resizeCallback);
 
         document.addEventListener('mousedown', () => {
             mouseClicked = true;
@@ -91,7 +86,7 @@ class Game {
         if (this.c_updateFps < 0) {
             this.fps = (1 / this.delta).toFixed(2);
 
-            document.getElementById("debug").textContent = `FPS: ${this.fps} | MS: ${(this.delta * 1000).toFixed(0)}`;
+            document.title = `FPS: ${this.fps} | MS: ${(this.delta * 1000).toFixed(0)}`;
             this.c_updateFps = 0.02;
         } else {
             this.c_updateFps -= this.delta;
@@ -111,8 +106,14 @@ class Game {
                 AboutScreen.draw();
                 break;
         }
-        //this.context.drawImage(assets['backgroundHexagons'], 0, 0);
-        this.backBufferContext.drawImage(this.canvas, 0, 0);
+
+        if (player.damaged && !player.dead) {
+            this.backBufferContext.filter = 'contrast(100)';
+            this.backBufferContext.drawImage(this.canvas, 0, 0);
+        } else {
+            this.backBufferContext.filter = 'none';
+            this.backBufferContext.drawImage(this.canvas, 0, 0);
+        }
     }
 
     mouseMove(e) {
@@ -141,15 +142,14 @@ class Game {
 const textColor = "rgb(39, 40, 68)";
 
 class Button {
-    constructor(pos, w, h, text, onClick) {
+    constructor(pos, w, h, text, onClick, fontSize) {
         this.rectangle = rectFromPosition(pos, w, h);
         this.text = text;
         this.onClick = onClick;
         this.textColor = textColor;
-        this.font = "60px Abel";
+        this.fontSize = fontSize;
+        this.font = createFont(fontSize);
         this.clicked = false;
-        this.color = 'rgb(0, 0, 0, 0)';
-        // this.color = 'rgb(170, 170, 255)';
     }
 
     update() {
@@ -166,20 +166,17 @@ class Button {
     }
 
     draw() {
-        if (this.rectangle.includes(mouse)) {
-            game.context.strokeStyle = textColor;
-        } else {
-            game.context.strokeStyle = this.color;
-        }
+        // game.context.fillStyle = this.color;
+        // game.context.lineWidth = 3;
+        // Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, false, true);
 
-        game.context.fillStyle = this.color;
-        game.context.lineWidth = 3;
-        Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, false, true);
+        game.context.fillStyle = 'rgb(119, 119, 209)';
+        game.context.fillRect(this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h);
 
         game.context.fillStyle = this.textColor;
         game.context.font = this.font;
         game.context.textAlign = "center";
-        game.context.fillText(this.text, this.rectangle.center().x, this.rectangle.center().y + this.rectangle.w / 15);
+        game.context.fillText(this.text, this.rectangle.center().x, this.rectangle.center().y + this.fontSize / 2);
     }
 }
 
@@ -202,6 +199,7 @@ var particles = {
     Particle: function (settings, position) {
         this.position = position;
         this.size = settings.size.rand();
+        this.iSize = this.size;
         this.speed = settings.speed.rand();
         this.lifespan = settings.lifespan.rand();
         this.initialLifespan = this.lifespan;
@@ -218,6 +216,7 @@ var particles = {
                 this.acceleration.mult(this.speed * game.delta);
                 this.position.add(this.acceleration);
                 this.lifespan -= game.delta;
+                this.size = Math.floor(mapValue(this.lifespan, this.initialLifespan, 0, this.iSize, 0));
 
                 if (this.lifespan < 0) {
                     this.dead = true;
@@ -256,7 +255,9 @@ var particles = {
                             this.particles.push(new particles.Particle(this.settings, pos));
                         }
 
-                        this.lifetime -= game.delta;
+                        if (this.settings.onetime) {
+                            this.lifetime -= game.delta;
+                        }
                     }
 
                     if (this.particles.length == 0) {
@@ -282,6 +283,7 @@ var particles = {
     },
 
     effects: [],
+    trail: null,
 
     new: function (rectangle, settings) {
         particles.effects.push(new particles.System(rectangle, settings));
@@ -289,6 +291,7 @@ var particles = {
 
     reset: function () {
         particles.effects.length = 0;
+        particles.trail = new this.System(player.rectangle, particles.configs.playerTrail());
     },
 
     update: function () {
@@ -300,23 +303,47 @@ var particles = {
                 particles.effects.splice(i, 1);
             }
         }
+
+        particles.trail.rectangle = rectFromPosition(player.position, 1, 1);
+        particles.trail.update();
     },
 
     draw: function () {
         for (let i = 0; i < particles.effects.length; i++) {
             particles.effects[i].draw();
         }
+
+        particles.trail.draw();
     },
 
     configs: {
+
+        playerTrail: function () {
+            let settings = new particles.Settings();
+
+            settings.density = 1;
+            settings.increaseRotation = false;
+            settings.lifespan = new Size(0.02, 0.05);
+            settings.onetime = false;
+            settings.size = new Size(10, 20);
+            settings.speed = new Size(1, 20);
+            settings.systemLifetime = 0.2;
+            settings.textures = [
+                assets['circle_purple'],
+                assets['circle_purple_dark']
+            ]
+
+            return settings;
+        },
+
         scoutExplosion: function () {
             let settings = new particles.Settings();
 
             settings.density = 10;
-            settings.increaseRotation = true;
+            settings.increaseRotation = false;
             settings.lifespan = new Size(0.005, 0.01);
             settings.onetime = true;
-            settings.size = new Size(7, 13);
+            settings.size = new Size(15, 30);
             settings.speed = new Size(500, 800);
             settings.systemLifetime = 0.02;
             settings.textures = [
@@ -329,6 +356,7 @@ var particles = {
 
         kamikazeExplosion: function () {
             let settings = particles.configs.scoutExplosion();
+            settings.density = 20;
             settings.textures = [
                 premadeAssets.dark_red_circle,
                 premadeAssets.red_bullet
@@ -414,6 +442,7 @@ const premadeAssets = {
     red_bullet: document.createElement('canvas'),
     dark_red_circle: document.createElement('canvas'),
     black_bullet: document.createElement('canvas'),
+    yellow_circle: document.createElement('canvas'),
 
     init: function () {
         this.bullet.width = 20;
@@ -447,6 +476,15 @@ const premadeAssets = {
         this.black_bullet.height = 20;
         ctx = this.black_bullet.getContext('2d');
         ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
+        this.yellow_circle.width = 20;
+        this.yellow_circle.height = 20;
+        ctx = this.yellow_circle.getContext('2d');
+        ctx.fillStyle = 'yellow';
         ctx.beginPath();
         ctx.arc(10, 10, 10, 0, Math.PI * 2);
         ctx.closePath();
@@ -541,10 +579,10 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.scout;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
+                    player.addScore(player.rewards.scout, this.position);
                 }
             }
 
@@ -577,7 +615,7 @@ const enemy = {
                     this.bullets[i].update();
 
                     if (player.rectangle.includes(this.bullets[i].position)) {
-                        player.health -= 1;
+                        player.hit();
                         player.damaged = true;
                         this.bullets.splice(i, 1);
                     }
@@ -611,10 +649,10 @@ const enemy = {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.kamikaze;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
+                    player.addScore(player.rewards.kamikaze, this.position);
                 }
             }
 
@@ -633,6 +671,7 @@ const enemy = {
                 b.speed = 150;
                 b.texture = premadeAssets.red_bullet;
                 enemy.projectiles.push(b);
+                popup.popups.push(new popup.Popup("+" + player.rewards.kamikaze, this.position));
             }
         }
 
@@ -701,11 +740,10 @@ const enemy = {
                 let contactPoint = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2);
                 if (Helper.distance(contactPoint, player.bullets[i].position) < this.baseSize / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
-                    player.score += player.rewards.turret;
                     let rect = rectFromPosition(this.position, this.baseSize, this.baseSize);
                     particles.new(rect, particles.configs.turretExplosion());
                     this.dead = true;
-                    popup.popups.push(new popup.Popup("+" + player.rewards.turret, this.position));
+                    player.addScore(player.rewards.turret, this.position)
                 }
             }
 
@@ -830,11 +868,20 @@ const enemy = {
         this.enemies = [];
         this.projectiles = [];
         this.c_spawnCooldown = 2;
+        this.kamikazeUnlocked = false;
+
+        for (key in this.unlocked) {
+            if (this.unlocked.hasOwnProperty(key)) {
+                this.unlocked[key] = false;
+            }
+        }
     },
 
-    kamikazeUnlocked: false,
-    turretUnlocked: false,
-    bombUnlocked: false,
+    unlocked: {
+        kamikaze: false,
+        turret: false,
+        bomb: false
+    },
 
     c_spawnCooldown: 1,
 
@@ -846,16 +893,16 @@ const enemy = {
 
     update: function () {
 
-        if (player.score > 80 && this.bombUnlocked == false) {
-            this.bombUnlocked = true;
+        if (player.score > 80 && this.unlocked.bomb == false) {
+            this.unlocked.bomb = true;
         }
 
-        if (player.score > 50 && this.kamikazeUnlocked == false) {
-            this.kamikazeUnlocked = true;
+        if (player.score > 50 && this.unlocked.kamikaze == false) {
+            this.unlocked.kamikaze = true;
         }
 
-        if (player.score > 120 && this.turretUnlocked == false) {
-            this.turretUnlocked = true;
+        if (player.score > 120 && this.unlocked.turret == false) {
+            this.unlocked.turret = true;
         }
 
         if (this.c_enemyCountIncreaseCD < 0) {
@@ -879,7 +926,7 @@ const enemy = {
             this.c_spawnCooldown -= game.delta;
         }
 
-        if (this.bombSpawnCD < 0 && this.bombUnlocked) {
+        if (this.bombSpawnCD < 0 && this.unlocked.bomb) {
             this.projectiles.push(new this.Bomb(this.chooseSpawnPos(), player.position));
             this.bombSpawnCD = random(1, 4);
         } else {
@@ -901,7 +948,7 @@ const enemy = {
                 this.projectiles[i].update();
 
                 if (player.rectangle.includes(this.projectiles[i].position)) {
-                    player.health -= 1;
+                    player.hit();
                     player.damaged = true;
                     this.projectiles.splice(i, 1);
                 }
@@ -938,7 +985,7 @@ const enemy = {
         let rand = random(0, 100);
 
         if (rand < 20) {
-            if (this.turretUnlocked) {
+            if (this.unlocked.turret) {
                 e = new this.Turret(pos);
             } else {
                 this.spawnEnemy(pos);
@@ -946,7 +993,7 @@ const enemy = {
         } else if (rand < 60) {
             e = new this.Scout(pos);
         } else {
-            if (this.kamikazeUnlocked) {
+            if (this.unlocked.kamikaze) {
                 e = new this.Kamikaze(pos);
             } else {
                 this.spawnEnemy(pos);
@@ -978,6 +1025,8 @@ class Player {
 
         this.addDashCooldown = 2;
         this.addHealthCooldown = 5;
+
+        this.multiplier = 1;
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -1045,9 +1094,9 @@ class Player {
         }
 
         this.rewards = {
-            scout: 5,
-            kamikaze: 10,
-            turret: 15
+            scout: 10,
+            kamikaze: 15,
+            turret: 25
         };
 
         window.addEventListener('keydown', (e) => {
@@ -1063,6 +1112,23 @@ class Player {
                 this.spaceBarClicked = false;
             }
         })
+    }
+
+    addScore(amount, position) {
+        this.score += amount * this.multiplier;
+
+        if (position) {
+            popup.popups.push(new popup.Popup(amount * this.multiplier, position));
+        }
+
+        if (this.multiplier < 5) {
+            this.multiplier++;
+        }
+    }
+
+    hit() {
+        this.health--;
+        this.multiplier = 1;
     }
 
     reset() {
@@ -1085,7 +1151,7 @@ class Player {
 
         this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
-        this.camSpeed = 0.03;
+        this.camSpeed = 1;
     }
 
     dash() {
@@ -1105,29 +1171,23 @@ class Player {
     }
 
     update() {
-        if (!this.dead) {
 
-            if (this.addHealthCooldown < 0) {
-                this.health++;
-                this.addHealthCooldown = 10;
-            } else if (this.health < 3) {
-                this.addHealthCooldown -= game.delta;
+        if (this.damaged) {
+            this.dmgCooldown -= game.delta;
+
+            if (this.dmgCooldown < 0) {
+                this.damaged = false;
+                this.dmgCooldown = 0.05;
             }
+        }
+
+        if (!this.dead) {
 
             if (this.addDashCooldown < 0) {
                 this.dashes++;
                 this.addDashCooldown = 4;
             } else if (this.dashes < 3) {
                 this.addDashCooldown -= game.delta;
-            }
-
-            if (this.damaged) {
-                this.dmgCooldown -= game.delta;
-
-                if (this.dmgCooldown < 0) {
-                    this.damaged = false;
-                    this.dmgCooldown = 0.05;
-                }
             }
 
             if (this.dashing) {
@@ -1162,9 +1222,9 @@ class Player {
             if (this.dashing) {
                 this.camPos = Vector2.lerp(this.camPos, this.position, 0.1);
             } else {
-                //this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
-                this.camPos = this.position;
+                this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
             }
+
             game.camera.moveTo(this.camPos.x, this.camPos.y);
 
             if (this.health < 1) {
@@ -1221,9 +1281,9 @@ var popup = {
     Popup: function (text, position) {
         this.text = text;
         this.position = position;
-        this.duration = 0.4;
+        this.duration = 0.6;
         this.iDuration = this.duration;
-        this.font = "35px Abel";
+        this.font = "35px Arial Black";
         this.color = new Color(39, 40, 68, 1);
         this.dead = false;
 
@@ -1268,17 +1328,30 @@ const player = new Player();
 
 var MainMenuScreen = {
 
-    playButton: new Button(new Vector2(game.width / 2, game.height / 2 + 75), 300, 100, "PLAY", () => {
-        player.reset();
-        game.currentScreenId = gameScreenId;
-    }),
+    playButton: null,
 
-    aboutButton: new Button(new Vector2(game.width / 2, game.height / 2 + 200), 300, 100, "ABOUT", () => {
-        game.currentScreenId = aboutScreenId;
-    }),
+    aboutButton: null,
 
     init: function () {
 
+        let widthUnit = game.width / 10;
+
+        let resize = () => {
+            let fontSize = mapValue(game.width, 1280, 300, 70, 15);
+
+            this.playButton = new Button(new Vector2(widthUnit * 2, game.height - 100 - widthUnit - 5), widthUnit * 2, 100, "PLAY", () => {
+                player.reset();
+                game.currentScreenId = gameScreenId;
+            }, fontSize);
+
+            this.aboutButton = new Button(new Vector2(widthUnit * 2, game.height - 100), widthUnit * 2, 100, "ABOUT", () => {
+                game.currentScreenId = aboutScreenId;
+            }, fontSize);
+        };
+
+        window.addEventListener('resize', resize);
+
+        resize();
     },
 
     update: function () {
@@ -1315,14 +1388,18 @@ var MainMenuScreen = {
             this.c_bigTextCooldown -= game.delta;
         }
 
+        let fontSize = mapValue(game.width, 1280, 300, 100, 25);
+
         if (this.bigText) {
-            game.context.font = "102px Abel";
+            game.context.font = `${fontSize + 2}px Arial Black`;
         } else {
-            game.context.font = "100px Abel";
+            game.context.font = `${fontSize}px Arial Black`;
         }
 
+        game.context.textAlign = 'left';
         game.context.fillStyle = textColor;
-        game.context.fillText("GEOMETRY SHOOT", game.width / 2, 200);
+        game.context.fillText("GEOMETRY SHOOT", fontSize, (game.height / 10) * 2);
+
 
         this.playButton.draw();
         this.aboutButton.draw();
@@ -1333,6 +1410,7 @@ let gamePaused = false;
 function resetGameScreen() {
     player.reset();
     enemy.reset();
+    particles.reset();
     gamePaused = false;
     game.showTip = true;
     game.tipCooldown = 1.4;
@@ -1340,34 +1418,52 @@ function resetGameScreen() {
 }
 var GameScreen = {
 
-    pauseButton: new Button(new Vector2(game.width - 85, 30), 150, 50, "PAUSE", () => {
-        if (gamePaused) {
-            gamePaused = false;
-        } else {
-            gamePaused = true;
-        }
-    }),
+    pauseButton: null,
 
-    menuButton: new Button(new Vector2(game.width / 2, game.height / 2 + 125), 150, 50, "MENU", () => {
-        resetGameScreen();
-        game.currentScreenId = mainMenuId;
-    }),
+    menuButton: null,
 
-    restartButton: new Button(new Vector2(game.width / 2, game.height / 2 + 200), 150, 50, "RESTART", () => {
-        resetGameScreen();
-    }),
-
-    showTip: true,
-    tipCooldown: 1,
+    restartButton: null,
 
     init: function () {
+        let resize = () => {
+
+            let zoomValue = 1300;
+
+            game.camera.zoomTo(zoomValue);
+            let fontSize = mapValue(game.width, 1280, 300, 30, 15);
+
+            this.pauseButton = new Button(new Vector2(game.width - 85, 30), 150, 50, "PAUSE", () => {
+                if (gamePaused) {
+                    gamePaused = false;
+                } else {
+                    gamePaused = true;
+                }
+            }, fontSize);
+
+            this.menuButton = new Button(new Vector2(game.width / 2, game.height - 175), 150, 50, "MENU", () => {
+                resetGameScreen();
+                game.currentScreenId = mainMenuId;
+            }, fontSize);
+
+            this.restartButton = new Button(new Vector2(game.width / 2, game.height - 100), 150, 50, "RESTART", () => {
+                resetGameScreen();
+            }, fontSize);
+
+
+            this.pauseButton.font = `${fontSize}px Arial Black`;
+            this.menuButton.font = `${fontSize}px Arial Black`;
+            this.restartButton.font = `${fontSize}px Arial Black`;
+        }
+
+        window.addEventListener('resize', resize);
+
+        resize();
+
         resetGameScreen();
-        this.pauseButton.font = "30px Abel";
-        this.menuButton.font = "30px Abel";
-        this.restartButton.font = "30px Abel";
     },
 
     update: function () {
+
         background.update();
         this.pauseButton.update();
         player.joystick.update();
@@ -1397,33 +1493,23 @@ var GameScreen = {
         popup.draw();
         game.camera.end();
 
-        if (this.showTip && this.tipCooldown > 0) {
-            game.context.fillStyle = textColor;
-            game.context.font = "40px Abel";
-            if (this.tipCooldown < 0.7) {
-                game.context.globalAlpha = mapValue(this.tipCooldown, 0.7, 0, 1, 0);
-            }
-            game.context.fillText("Hold and move mouse", game.width / 2, game.height / 10 * 3);
-            game.context.globalAlpha = 1;
-            this.tipCooldown -= game.delta;
-        } else {
-            this.showTip = false;
-        }
-
         if (!gamePaused) {
             player.joystick.draw();
         }
 
         if (gamePaused) {
-            game.context.globalAlpha = 0.5;
+            game.context.globalAlpha = 0.7;
             game.context.fillStyle = game.backgroundColor;
             game.context.fillRect(0, 0, game.width, game.height);
             game.context.globalAlpha = 1;
 
+            let fontSize = mapValue(game.width, 1280, 300, 40, 20);
+
+            game.context.font = `${fontSize}px Arial Black`;
+
             game.context.fillStyle = textColor;
-            game.context.font = "40px Abel";
-            game.context.fillText("Press PAUSE button", game.width / 2, game.height / 2);
-            game.context.fillText("again to continue", game.width / 2, game.height / 2 + 50);
+            game.context.fillText("Press PAUSE button", game.width / 2, game.height - 350);
+            game.context.fillText("again to continue", game.width / 2, game.height - 300);
 
             this.menuButton.draw();
             this.restartButton.draw();
@@ -1431,10 +1517,21 @@ var GameScreen = {
 
         if (player.dead) {
 
+            game.context.globalAlpha = 0.7;
+            game.context.fillStyle = game.backgroundColor;
+            game.context.fillRect(0, 0, game.width, game.height);
+            game.context.globalAlpha = 1;
+
+            let fontSize = mapValue(game.width, 1280, 300, 40, 20);
+
+            if (game.isMobile) {
+                fontSize = 20;
+            }
+            game.context.font = `${fontSize}px Arial Black`;
+
             game.context.fillStyle = textColor;
-            game.context.font = "40px Abel";
-            game.context.fillText("You have been slain!", game.width / 2, game.height / 2);
-            game.context.fillText("Score: " + player.score, game.width / 2, game.height / 2 + 50);
+            game.context.fillText("You have been slain!", game.width / 2, 100);
+            game.context.fillText("Score: " + player.score, game.width / 2, 100 + fontSize * 1.25);
 
             this.restartButton.draw();
             this.menuButton.draw();
@@ -1442,7 +1539,7 @@ var GameScreen = {
             this.drawPlayerHealthAndDashes();
             this.pauseButton.draw();
 
-            game.context.font = "40px Abel";
+            game.context.font = "40px Arial Black";
             game.context.fillStyle = textColor;
             game.context.fillText(player.score, game.width / 2, 40);
         }
@@ -1464,13 +1561,13 @@ var GameScreen = {
 
         if (player.dashes > 0) {
             for (let i = 0; i < player.dashes; i++) {
-                let x = 35 * 5 + (i * 35);
+                let x = 30 + (i * 35);
 
                 game.context.strokeStyle = textColor;
                 game.context.lineWidth = 7;
                 game.context.beginPath();
-                game.context.moveTo(x, 25 + 10);
-                game.context.lineTo(x + 10, 25 - 10);
+                game.context.moveTo(x, 60 + 10);
+                game.context.lineTo(x + 10, 60 - 10);
                 game.context.closePath();
                 game.context.stroke();
             }
@@ -1480,12 +1577,20 @@ var GameScreen = {
 
 var AboutScreen = {
 
-    backButton: new Button(new Vector2(game.width / 2, game.height - 100), 200, 50, "BACK", () => {
-        game.currentScreenId = mainMenuId;
-    }),
+    backButton: null,
 
     init: function () {
-        this.backButton.font = "40px Abel";
+
+        let resize = () => {
+            let widthUnit = game.width / 10;
+            this.backButton = new Button(new Vector2((widthUnit * 3) / 2, game.height - widthUnit), widthUnit * 2, 100, "BACK", () => {
+                game.currentScreenId = mainMenuId;
+            }, 40);
+        }
+
+        window.addEventListener('resize', resize);
+
+        resize();
     },
 
     update: function () {
@@ -1493,21 +1598,26 @@ var AboutScreen = {
     },
 
     draw: function () {
-        game.context.font = "120px Abel";
-        game.context.fillStyle = textColor;
-        game.context.fillText("ABOUT", game.width / 2, 200);
+        let fontSize = mapValue(game.width, 1280, 300, 100, 40);
+        game.context.font = `${fontSize}px Arial Black`;
 
-        game.context.font = "30px Abel";
-        game.context.fillText("Game made by Mihai Solomon,", game.width / 2, game.height / 2);
-        game.context.fillText("feel free to contact me at", game.width / 2, game.height / 2 + 35);
-        game.context.fillText("solomonmihai10@gmail.com", game.width / 2, game.height / 2 + 70);
+        game.context.textAlign = 'left';
+        game.context.fillStyle = textColor;
+        game.context.fillText("ABOUT", fontSize, (game.height / 10) * 2);
+
+        fontSize = mapValue(game.width, 1280, 300, 40, 15);
+        game.context.font = `${fontSize}px Arial Black`;
+
+        game.context.fillText("Game made by Mihai Solomon,", fontSize, game.height / 2);
+        game.context.fillText("feel free to contact me at", fontSize, game.height / 2 + fontSize);
+        game.context.fillText("solomonmihai10@gmail.com", fontSize, game.height / 2 + fontSize * 2);
         this.backButton.draw();
     }
 }
 
 var background = {
 
-    Element: function(position) {
+    Element: function (position) {
         this.position = position;
         this.rotationIncrement = random(0, 100) < 50 ? -Math.PI / 180 / 4 : Math.PI / 180 / 4;
         this.texture = assets[`Hex(${Math.floor(random(1, 9))})`];
@@ -1516,7 +1626,7 @@ var background = {
         this.dead = false;
         this.rotation = Math.floor(random(0, 360)) * Math.PI / 180;
 
-        this.update = function() {
+        this.update = function () {
             let playerArea = rectFromPosition(player.position, game.camera.rectangle.w * 1.5, game.camera.rectangle.h * 1.5);
             if (playerArea.includes(this.position) == false) {
                 this.dead = false;
@@ -1529,7 +1639,7 @@ var background = {
             this.rotation += this.rotationIncrement;
         }
 
-        this.draw = function() {
+        this.draw = function () {
             Helper.drawImage(game.context, this.texture, this.position.x, this.position.y, this.texture.width * this.scale, this.texture.height * this.scale, this.rotation);
         }
     },
@@ -1548,7 +1658,7 @@ var background = {
     elementsLimit: 75,
     spawnCooldown: 0.1,
 
-    update: function() {
+    update: function () {
 
         if (this.spawnCooldown < 0 && this.elements.length < this.elementsLimit) {
             this.elements.push(new this.Element(this.chooseSpawnPosition()));
@@ -1566,7 +1676,7 @@ var background = {
         }
     },
 
-    draw: function() {
+    draw: function () {
         for (let i = 0; i < this.elements.length; i++) {
             this.elements[i].draw();
         }
