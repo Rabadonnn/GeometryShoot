@@ -1,6 +1,7 @@
 const mainMenuId = "menu";
 const gameScreenId = "game";
 const aboutScreenId = "about";
+const upgradesScreenId = "upgrades";
 
 var mouse;
 var mouseClicked;
@@ -11,14 +12,24 @@ class Game {
         this.lastUpdate = Date.now();
 
         this.canvas = document.createElement("canvas");
-        this.context = this.canvas.getContext("2d");
-
         this.backBufferCanvas = document.createElement("canvas");
+
+        this.context = this.canvas.getContext("2d");
         this.backBufferContext = this.backBufferCanvas.getContext("2d");
 
         document.body.appendChild(this.backBufferCanvas);
 
-        this.currentScreenId = mainMenuId;
+        let setpixelated = (context) => {
+            context['imageSmoothingEnabled'] = false;       /* standard */
+            context['oImageSmoothingEnabled'] = false;      /* Opera */
+            context['webkitImageSmoothingEnabled'] = false; /* Safari */
+            context['msImageSmoothingEnabled'] = false;     /* IE */
+        }
+
+        setpixelated(this.context);
+        setpixelated(this.backBufferContext);
+
+        this.currentScreenId = upgradesScreenId;
         this.camera = new Camera(this.context);
         this.c_updateFps = 0;
         this.fps = 0;
@@ -26,6 +37,7 @@ class Game {
         this.alpha = 1;
         this.aspectRatio = 16 / 9;
         this.inverseAspectRatio = 9 / 16;
+        this.extraRectangle = this.camera.rectangle;
 
         this.resizeCallback = () => {
             this.width = window.innerWidth;
@@ -45,7 +57,13 @@ class Game {
 
         this.resizeCallback();
 
-        window.addEventListener("resize", this.resizeCallback);
+        window.addEventListener("resize", () => {
+            this.resizeCallback();
+            MainMenuScreen.resize();
+            GameScreen.resize();
+            AboutScreen.resize();
+            UpgradesScreen.resize();
+        });
 
         document.addEventListener('mousedown', () => {
             mouseClicked = true;
@@ -77,7 +95,7 @@ class Game {
         this.tick();
 
 
-        this.backgroundColor = `rgb(172, 172, 252, ${this.alpha})`;
+        this.backgroundColor = `rgb(172, 172, 252)`;
 
         this.context.fillStyle = this.backgroundColor;
         this.context.fillRect(0, 0, this.width, this.height);
@@ -92,19 +110,24 @@ class Game {
             this.c_updateFps -= this.delta;
         }
 
-        switch (this.currentScreenId) {
-            case mainMenuId:
-                MainMenuScreen.update();
-                MainMenuScreen.draw();
-                break;
-            case gameScreenId:
-                GameScreen.update();
-                GameScreen.draw();
-                break;
-            case aboutScreenId:
-                AboutScreen.update();
-                AboutScreen.draw();
-                break;
+        if (this.currentScreenId == mainMenuId) {
+            MainMenuScreen.update();
+            MainMenuScreen.draw();
+        } else if (this.currentScreenId == gameScreenId) {
+            this.extraRectangle.x = this.camera.rectangle.x - 200;
+            this.extraRectangle.y = this.camera.rectangle.y - 200;
+            this.extraRectangle.w = this.camera.rectangle.w + 400;
+            this.extraRectangle.h = this.camera.rectangle.h + 400;
+
+            GameScreen.update();
+            GameScreen.draw();
+
+        } else if (this.currentScreenId == aboutScreenId) {
+            AboutScreen.update();
+            AboutScreen.draw();
+        } else if (this.currentScreenId == upgradesScreenId) {
+            UpgradesScreen.update();
+            UpgradesScreen.draw();
         }
 
         if (player.damaged && !player.dead) {
@@ -157,6 +180,10 @@ class Button {
             this.clicked = true;
         }
 
+        if (this.rectangle.includes(mouse) == false && mouseClicked) {
+            this.clicked = false;
+        }
+
         window.addEventListener('mouseup', () => {
             if (this.rectangle.includes(mouse) && this.clicked) {
                 this.clicked = false;
@@ -166,17 +193,19 @@ class Button {
     }
 
     draw() {
-        // game.context.fillStyle = this.color;
-        // game.context.lineWidth = 3;
-        // Helper.roundRect(game.context, this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h, 25, false, true);
-
         game.context.fillStyle = 'rgb(119, 119, 209)';
-        game.context.fillRect(this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h);
+
+        if (this.rectangle.includes(mouse)) {
+            let u = Math.floor(this.rectangle.w / 20);
+            game.context.fillRect(this.rectangle.x - (u / 2), this.rectangle.y - (u / 2), this.rectangle.w + u, this.rectangle.h + u);
+        } else {
+            game.context.fillRect(this.rectangle.x, this.rectangle.y, this.rectangle.w, this.rectangle.h);
+        }
 
         game.context.fillStyle = this.textColor;
         game.context.font = this.font;
         game.context.textAlign = "center";
-        game.context.fillText(this.text, this.rectangle.center().x, this.rectangle.center().y + this.fontSize / 2);
+        game.context.fillText(this.text, this.rectangle.center().x, this.rectangle.center().y + this.fontSize / 3);
     }
 }
 
@@ -212,9 +241,12 @@ var particles = {
 
         this.update = function () {
             if (!this.dead) {
-                this.acceleration.normalize();
-                this.acceleration.mult(this.speed * game.delta);
-                this.position.add(this.acceleration);
+                if (!this.speed == 0) {
+                    this.acceleration.normalize();
+                    this.acceleration.mult(this.speed * game.delta);
+                    this.position.add(this.acceleration);
+                }
+
                 this.lifespan -= game.delta;
                 this.size = Math.floor(mapValue(this.lifespan, this.initialLifespan, 0, this.iSize, 0));
 
@@ -243,13 +275,14 @@ var particles = {
         this.onetime = settings.onetime;
         this.lifetime = settings.systemLifetime;
         this.finished = false;
+        this.shouldAdd = true;
 
         this.update = function () {
             if (this.enabled) {
                 if (this.lifetime <= 0 && this.finished) {
                     this.enabled = false;
                 } else {
-                    if (this.lifetime > 0) {
+                    if (this.lifetime > 0 && this.shouldAdd) {
                         for (let i = 0; i < this.settings.density; i++) {
                             let pos = Helper.randomPointInRect(this.rectangle);
                             this.particles.push(new particles.Particle(this.settings, pos));
@@ -277,7 +310,9 @@ var particles = {
 
         this.draw = function () {
             for (let i = 0; i < this.particles.length; i++) {
-                this.particles[i].draw();
+                if (game.camera.rectangle.includes(this.particles[i].position)) {
+                    this.particles[i].draw();
+                }
             }
         }
     },
@@ -304,7 +339,16 @@ var particles = {
             }
         }
 
-        particles.trail.rectangle = rectFromPosition(player.position, 1, 1);
+        if (player.joystick.hasValue) {
+            particles.trail.rectangle.x = player.position.x - player.size / 4;
+            particles.trail.rectangle.y = player.position.y - player.size / 4;
+            particles.trail.rectangle.w = 2;
+            particles.trail.rectangle.h = 2;
+            particles.trail.shouldAdd = true;
+        } else {
+            particles.trail.shouldAdd = false;
+        }
+
         particles.trail.update();
     },
 
@@ -312,7 +356,6 @@ var particles = {
         for (let i = 0; i < particles.effects.length; i++) {
             particles.effects[i].draw();
         }
-
         particles.trail.draw();
     },
 
@@ -323,10 +366,10 @@ var particles = {
 
             settings.density = 1;
             settings.increaseRotation = false;
-            settings.lifespan = new Size(0.02, 0.05);
+            settings.lifespan = new Size(0.04, 0.1);
             settings.onetime = false;
             settings.size = new Size(10, 20);
-            settings.speed = new Size(1, 20);
+            settings.speed = new Size(0.001, 0.01);
             settings.systemLifetime = 0.2;
             settings.textures = [
                 assets['circle_purple'],
@@ -414,6 +457,7 @@ function loadAssets() {
             assetsLoaded++;
         }
         assets[assetNames[i]] = asset;
+        document.getElementById('loading').textContent = `Loading: ${(assetsLoaded / assetNames.length) * 100}%`;
     }
 }
 
@@ -427,8 +471,11 @@ window.onload = () => {
     MainMenuScreen.init();
     AboutScreen.init();
     GameScreen.init();
+    UpgradesScreen.init();
 
     document.getElementById("loading").innerText = `Loading: ${assetsLoaded}/${assetNames.length}`;
+
+    stats.load();
 
     if (assetsLoaded == assetNames.length) {
         document.getElementById("loading").style.display = "none";
@@ -566,7 +613,7 @@ const enemy = {
             if (this.c_shootingCooldown < 0) {
                 let b = new projectile.Bullet(this.position, this.direction);
                 b.damage = 5;
-                b.speed = 250;
+                b.speed = 350;
                 this.bullets.push(b);
 
                 this.c_shootingCooldown = shootingCooldown;
@@ -594,7 +641,11 @@ const enemy = {
         this.update = function () {
             this.direction = new Vector2(player.position.x - this.position.x, player.position.y - this.position.y);
             this.direction.normalize();
-            this.direction.mult(game.delta * this.speed);
+            if (game.camera.rectangle.includes(this.position) == false) {
+                this.direction.mult(game.delta * this.speed * 10);
+            } else {
+                this.direction.mult(game.delta * this.speed);
+            }
             this.position.add(this.direction);
 
             let a = player.position.y - this.position.y;
@@ -647,7 +698,7 @@ const enemy = {
 
         this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
-                if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
+                if (Helper.distance(this.position, player.bullets[i].position) < this.iSize / 1.5) {
                     player.bullets[i].dead = true;
                     let rect = rectFromPosition(this.position, 10, 10);
                     particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
@@ -658,6 +709,7 @@ const enemy = {
 
             if (Helper.distance(this.position, player.position) < this.size / 2 + player.size / 2) {
                 this.dead = true;
+                player.hit();
             }
         }
 
@@ -668,10 +720,10 @@ const enemy = {
                 let dir = new Vector2(x - this.position.x, y - this.position.y);
                 dir.normalize();
                 let b = new projectile.Bullet(new Vector2(this.position.x, this.position.y), dir);
-                b.speed = 150;
+                b.speed = 250;
+                b.size = 20;
                 b.texture = premadeAssets.red_bullet;
                 enemy.projectiles.push(b);
-                popup.popups.push(new popup.Popup("+" + player.rewards.kamikaze, this.position));
             }
         }
 
@@ -701,7 +753,11 @@ const enemy = {
 
             let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
             direction.normalize();
-            direction.mult(this.speed * game.delta);
+            if (game.extraRectangle.includes(this.position) == false) {
+                direction.mult(game.delta * this.speed * 10);
+            } else {
+                direction.mult(game.delta * this.speed);
+            }
             this.position.add(direction);
 
             this.rotation = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x) + Math.PI / 2;
@@ -749,6 +805,7 @@ const enemy = {
 
             if (Helper.distance(this.position, player.position) < this.size / 2 + player.size / 2) {
                 this.dead = true;
+                player.hit();
             }
         }
 
@@ -764,7 +821,7 @@ const enemy = {
                 let pos = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2);
                 let b = new projectile.Bullet(pos, this.bulletDirection);
                 b.lifetime = 2;
-                b.speed = 200;
+                b.speed = 400;
                 b.texture = premadeAssets.black_bullet;
                 enemy.projectiles.push(b);
                 this.c_shootingCooldown = shootingCooldown;
@@ -791,7 +848,11 @@ const enemy = {
             let direction = new Vector2(this.checkPoint.x - this.position.x, this.checkPoint.y - this.position.y);
 
             direction.normalize();
-            direction.mult(game.delta * this.speed);
+            if (game.extraRectangle.includes(this.position) == false) {
+                direction.mult(game.delta * this.speed * 10);
+            } else {
+                direction.mult(game.delta * this.speed);
+            }
             this.position.add(direction);
             this.position.toInt();
         }
@@ -812,7 +873,7 @@ const enemy = {
         this.dangerSize = this.size;
         this.unit = 1;
         this.dead = false;
-
+        this.target.toInt();
         this.explode = function () {
 
             for (let i = 0; i < 360; i += 10) {
@@ -842,12 +903,13 @@ const enemy = {
                     this.explode();
                 }
 
+                this.position.toInt();
+
             } else {
                 if (this.dangerSize > this.size * 1.25 || this.dangerSize < this.size * 0.75) {
                     this.unit *= -1;
                 }
                 this.dangerSize += this.unit;
-
                 this.cooldown -= game.delta;
             }
         }
@@ -865,8 +927,8 @@ const enemy = {
     projectiles: [],
 
     reset: function () {
-        this.enemies = [];
-        this.projectiles = [];
+        this.enemies.length = 0;
+        this.projectiles.length = 0;
         this.c_spawnCooldown = 2;
         this.kamikazeUnlocked = false;
 
@@ -964,7 +1026,7 @@ const enemy = {
         }
 
         for (let i = 0; i < this.projectiles.length; i++) {
-            if (game.camera.rectangle.includes(this.projectiles[i].position)) {
+            if (game.extraRectangle.includes(this.projectiles[i].position)) {
                 this.projectiles[i].draw();
             }
         }
@@ -1011,7 +1073,7 @@ class Player {
         this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.health = 3;
-        this.speed = 200;
+        this.speed = 300;
         this.direction = new Vector2(0, 0);
         this.size = 40;
         this.idleCheckpoint = this.position;
@@ -1024,9 +1086,18 @@ class Player {
         this.spaceBarClicked = false;
 
         this.addDashCooldown = 2;
-        this.addHealthCooldown = 5;
 
-        this.multiplier = 1;
+        this.rewards = {
+            scout: 10,
+            kamikaze: 15,
+            turret: 25
+        };
+
+        this.upgrades = {
+            speed: 0,
+            dash_length: 0,
+            shooting_rate: 0
+        };
 
         this.joystick = {
             position: new Vector2(0, 0),
@@ -1091,12 +1162,6 @@ class Player {
                     }
                 }
             }
-        }
-
-        this.rewards = {
-            scout: 10,
-            kamikaze: 15,
-            turret: 25
         };
 
         window.addEventListener('keydown', (e) => {
@@ -1111,7 +1176,7 @@ class Player {
             if (e.keyCode == 32) {
                 this.spaceBarClicked = false;
             }
-        })
+        });
     }
 
     addScore(amount, position) {
@@ -1138,7 +1203,7 @@ class Player {
         this.health = 3;
         this.direction = new Vector2(0, 0);
         this.dead = false;
-        this.bullets = [];
+        this.bullets.length = 0;
         this.score = 0;
 
         this.damaged = false;
@@ -1152,6 +1217,8 @@ class Player {
         this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
         this.camSpeed = 1;
+
+        this.multiplier = 1;
     }
 
     dash() {
@@ -1212,7 +1279,7 @@ class Player {
 
 
             for (let i = 0; i < this.bullets.length; i++) {
-                if (this.bullets[i].dead) {
+                if (this.bullets[i].dead || game.camera.rectangle.includes(this.bullets[i].position) == false) {
                     this.bullets.splice(i, 1);
                 } else {
                     this.bullets[i].update();
@@ -1229,6 +1296,10 @@ class Player {
 
             if (this.health < 1) {
                 this.dead = true;
+
+                if (this.score > stats.high_score) {
+                    stats.high_score = this.score;
+                }
             }
         }
     }
@@ -1281,9 +1352,9 @@ var popup = {
     Popup: function (text, position) {
         this.text = text;
         this.position = position;
-        this.duration = 0.6;
+        this.duration = 0.9;
         this.iDuration = this.duration;
-        this.font = "35px Arial Black";
+        this.font = "35px Archivo Black";
         this.color = new Color(39, 40, 68, 1);
         this.dead = false;
 
@@ -1326,38 +1397,77 @@ var popup = {
 
 const player = new Player();
 
+var stats = {
+    high_score: 0,
+    money: 0,
+
+    save: function () {
+        localStorage.setItem('high_score', JSON.stringify(this.high_score));
+        localStorage.setItem('money', JSON.stringify(this.money));
+    },
+
+    load: function () {
+        let score = JSON.parse(localStorage.getItem('high_score'));
+        if (score != null) {
+            this.high_score = score;
+        }
+
+        let money = JSON.parse(localStorage.getItem('money'));
+        if (money != null) {
+            this.money = money;
+        }
+
+    },
+
+    reset: function () {
+        if (this.high_score != 0) {
+            localStorage.clear();
+            this.high_score = 0;
+            this.load();
+        }
+    }
+}
+
 var MainMenuScreen = {
 
     playButton: null,
-
     aboutButton: null,
+    resetButton: null,
+    upgradesButton: null,
+
+    resize: function () {
+        let widthUnit = game.width / 10;
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 70, 15));
+        let buttonWidth = mapValue(game.width, 1280, 300, 100, 30);
+
+        this.playButton = new Button(new Vector2(game.width / 2, game.height - fontSize - buttonWidth - fontSize / 3), widthUnit * 3.4, buttonWidth, "PLAY", () => {
+            player.reset();
+            game.currentScreenId = gameScreenId;
+        }, fontSize);
+
+        this.aboutButton = new Button(new Vector2(widthUnit * 2, game.height - fontSize), widthUnit * 2.2, buttonWidth, "?", () => {
+            game.currentScreenId = aboutScreenId;
+        }, fontSize);
+
+        this.resetButton = new Button(new Vector2(game.width - widthUnit * 2, game.height - fontSize), widthUnit * 2.2, buttonWidth, "RESET", () => {
+            stats.reset();
+        }, fontSize);
+
+        this.upgradesButton = new Button(new Vector2(game.width / 2, game.height - fontSize), widthUnit * 3.4, buttonWidth, "UPGRADES", () => {
+            game.currentScreenId = upgradesScreenId;
+        }, fontSize);
+    },
 
     init: function () {
-
-        let widthUnit = game.width / 10;
-
-        let resize = () => {
-            let fontSize = mapValue(game.width, 1280, 300, 70, 15);
-
-            this.playButton = new Button(new Vector2(widthUnit * 2, game.height - 100 - widthUnit - 5), widthUnit * 2, 100, "PLAY", () => {
-                player.reset();
-                game.currentScreenId = gameScreenId;
-            }, fontSize);
-
-            this.aboutButton = new Button(new Vector2(widthUnit * 2, game.height - 100), widthUnit * 2, 100, "ABOUT", () => {
-                game.currentScreenId = aboutScreenId;
-            }, fontSize);
-        };
-
-        window.addEventListener('resize', resize);
-
-        resize();
+        this.resize();
     },
 
     update: function () {
         player.updateIdleState();
         this.playButton.update();
         this.aboutButton.update();
+        this.resetButton.update();
+        this.upgradesButton.update();
     },
 
     bigText: false,
@@ -1388,21 +1498,31 @@ var MainMenuScreen = {
             this.c_bigTextCooldown -= game.delta;
         }
 
-        let fontSize = mapValue(game.width, 1280, 300, 100, 25);
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 110, 30));
 
         if (this.bigText) {
-            game.context.font = `${fontSize + 2}px Arial Black`;
+            game.context.font = `${fontSize + 2}px Archivo Black`;
         } else {
-            game.context.font = `${fontSize}px Arial Black`;
+            game.context.font = `${fontSize}px Archivo Black`;
         }
 
-        game.context.textAlign = 'left';
+        game.context.textAlign = 'center';
         game.context.fillStyle = textColor;
-        game.context.fillText("GEOMETRY SHOOT", fontSize, (game.height / 10) * 2);
-
+        game.context.fillText("GEOMETRY", game.width / 2, (game.height / 10) * 2);
+        game.context.fillText("SHOOT", game.width / 2, (game.height / 10) * 2 + fontSize);
 
         this.playButton.draw();
         this.aboutButton.draw();
+        this.resetButton.draw();
+        this.upgradesButton.draw();
+
+        // draw Stats
+
+        fontSize = mapValue(game.width, 1280, 300, 60, 10);
+        game.context.font = `${fontSize}px Archivo Black`;
+        game.context.textAlign = 'center';
+        game.context.fillText("🏆: " + stats.high_score, this.aboutButton.rectangle.center().x, this.playButton.rectangle.bottom() - fontSize / 2);
+        game.context.fillText("💰: " + stats.money, this.resetButton.rectangle.center().x, this.playButton.rectangle.bottom() - fontSize / 2);
     }
 };
 
@@ -1424,40 +1544,40 @@ var GameScreen = {
 
     restartButton: null,
 
+    resize: function () {
+        let zoomValue = 1300;
+
+        game.camera.zoomTo(zoomValue);
+
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 30, 15));
+        let buttonWidth = mapValue(game.width, 1280, 300, 60, 20);
+        let widthUnit = game.width / 10;
+
+        this.pauseButton = new Button(new Vector2(game.width - widthUnit * 0.7, buttonWidth / 1.8), widthUnit * 1.3, buttonWidth, "PAUSE", () => {
+            if (gamePaused) {
+                gamePaused = false;
+            } else {
+                gamePaused = true;
+            }
+        }, fontSize);
+
+        this.menuButton = new Button(new Vector2(game.width / 2, game.height - buttonWidth * 2.2), widthUnit * 1.5, buttonWidth, "MENU", () => {
+            resetGameScreen();
+            stats.save();
+            if (player.score > stats.high_score) {
+                stats.high_score = player.score;
+            }
+            game.currentScreenId = mainMenuId;
+        }, fontSize);
+
+        this.restartButton = new Button(new Vector2(game.width / 2, game.height - buttonWidth), widthUnit * 1.5, buttonWidth, "RESTART", () => {
+            resetGameScreen();
+            stats.save();
+        }, fontSize);
+    },
+
     init: function () {
-        let resize = () => {
-
-            let zoomValue = 1300;
-
-            game.camera.zoomTo(zoomValue);
-            let fontSize = mapValue(game.width, 1280, 300, 30, 15);
-
-            this.pauseButton = new Button(new Vector2(game.width - 85, 30), 150, 50, "PAUSE", () => {
-                if (gamePaused) {
-                    gamePaused = false;
-                } else {
-                    gamePaused = true;
-                }
-            }, fontSize);
-
-            this.menuButton = new Button(new Vector2(game.width / 2, game.height - 175), 150, 50, "MENU", () => {
-                resetGameScreen();
-                game.currentScreenId = mainMenuId;
-            }, fontSize);
-
-            this.restartButton = new Button(new Vector2(game.width / 2, game.height - 100), 150, 50, "RESTART", () => {
-                resetGameScreen();
-            }, fontSize);
-
-
-            this.pauseButton.font = `${fontSize}px Arial Black`;
-            this.menuButton.font = `${fontSize}px Arial Black`;
-            this.restartButton.font = `${fontSize}px Arial Black`;
-        }
-
-        window.addEventListener('resize', resize);
-
-        resize();
+        this.resize();
 
         resetGameScreen();
     },
@@ -1465,7 +1585,6 @@ var GameScreen = {
     update: function () {
 
         background.update();
-        this.pauseButton.update();
         player.joystick.update();
 
         if (gamePaused == false && !player.dead) {
@@ -1481,6 +1600,10 @@ var GameScreen = {
         if (player.dead) {
             this.menuButton.update();
             this.restartButton.update();
+        }
+
+        if (!player.dead) {
+            this.pauseButton.update();
         }
     },
 
@@ -1503,13 +1626,13 @@ var GameScreen = {
             game.context.fillRect(0, 0, game.width, game.height);
             game.context.globalAlpha = 1;
 
-            let fontSize = mapValue(game.width, 1280, 300, 40, 20);
+            let fontSize = Math.floor(mapValue(game.width, 1280, 300, 40, 20));
 
-            game.context.font = `${fontSize}px Arial Black`;
+            game.context.font = `${fontSize}px Archivo Black`;
 
             game.context.fillStyle = textColor;
-            game.context.fillText("Press PAUSE button", game.width / 2, game.height - 350);
-            game.context.fillText("again to continue", game.width / 2, game.height - 300);
+            game.context.fillText("Press PAUSE button", game.width / 2, game.height / 2);
+            game.context.fillText("again to continue", game.width / 2, game.height / 2 + fontSize);
 
             this.menuButton.draw();
             this.restartButton.draw();
@@ -1522,12 +1645,9 @@ var GameScreen = {
             game.context.fillRect(0, 0, game.width, game.height);
             game.context.globalAlpha = 1;
 
-            let fontSize = mapValue(game.width, 1280, 300, 40, 20);
+            let fontSize = Math.floor(mapValue(game.width, 1280, 300, 40, 20));
 
-            if (game.isMobile) {
-                fontSize = 20;
-            }
-            game.context.font = `${fontSize}px Arial Black`;
+            game.context.font = `${fontSize}px Archivo Black`;
 
             game.context.fillStyle = textColor;
             game.context.fillText("You have been slain!", game.width / 2, 100);
@@ -1539,9 +1659,10 @@ var GameScreen = {
             this.drawPlayerHealthAndDashes();
             this.pauseButton.draw();
 
-            game.context.font = "40px Arial Black";
+            game.context.font = "40px Archivo Black";
             game.context.fillStyle = textColor;
             game.context.fillText(player.score, game.width / 2, 40);
+            game.context.font = "20px Archivo Black";
         }
 
     },
@@ -1579,18 +1700,18 @@ var AboutScreen = {
 
     backButton: null,
 
+    resize: function () {
+        let widthUnit = game.width / 10;
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 70, 15));
+        let buttonWidth = Math.floor(mapValue(game.width, 1280, 300, 100, 30));
+
+        this.backButton = new Button(new Vector2(game.width / 2, game.height - fontSize), widthUnit * 2, buttonWidth, "BACK", () => {
+            game.currentScreenId = mainMenuId;
+        }, fontSize);
+    },
+
     init: function () {
-
-        let resize = () => {
-            let widthUnit = game.width / 10;
-            this.backButton = new Button(new Vector2((widthUnit * 3) / 2, game.height - widthUnit), widthUnit * 2, 100, "BACK", () => {
-                game.currentScreenId = mainMenuId;
-            }, 40);
-        }
-
-        window.addEventListener('resize', resize);
-
-        resize();
+        this.resize();
     },
 
     update: function () {
@@ -1598,20 +1719,143 @@ var AboutScreen = {
     },
 
     draw: function () {
-        let fontSize = mapValue(game.width, 1280, 300, 100, 40);
-        game.context.font = `${fontSize}px Arial Black`;
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 100, 40));
+        game.context.font = `${fontSize}px Archivo Black`;
 
-        game.context.textAlign = 'left';
+        game.context.textAlign = 'center';
         game.context.fillStyle = textColor;
-        game.context.fillText("ABOUT", fontSize, (game.height / 10) * 2);
+        game.context.fillText("ABOUT", game.width / 2, (game.height / 10) * 2);
 
-        fontSize = mapValue(game.width, 1280, 300, 40, 15);
-        game.context.font = `${fontSize}px Arial Black`;
+        fontSize = Math.floor(mapValue(game.width, 1280, 300, 40, 15));
+        game.context.font = `${fontSize}px Archivo Black`;
 
-        game.context.fillText("Game made by Mihai Solomon,", fontSize, game.height / 2);
-        game.context.fillText("feel free to contact me at", fontSize, game.height / 2 + fontSize);
-        game.context.fillText("solomonmihai10@gmail.com", fontSize, game.height / 2 + fontSize * 2);
+        game.context.fillText("Game made by Mihai Solomon,", game.width / 2, game.height / 2);
+        game.context.fillText("feel free to contact me at", game.width / 2, game.height / 2 + fontSize);
+        game.context.fillText("solomonmihai10@gmail.com", game.width / 2, game.height / 2 + fontSize * 2);
         this.backButton.draw();
+    }
+}
+
+var UpgradesScreen = {
+
+    backButton: null,
+    buySpeedButton: null,
+    buyDashLength: null,
+    buyShootingRate: null,
+
+    prices: {
+        speed: 100,
+        dashLength: 100,
+        shootingRate: 100
+    },
+
+    resize: function () {
+        let widthUnit = game.width / 10;
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 70, 15));
+        let buttonWidth = Math.floor(mapValue(game.width, 1280, 300, 100, 30));
+
+        let buttonHeight = Math.floor(mapValue(game.width, 1280, 300, 60, 15));
+
+        this.backButton = new Button(new Vector2(game.width / 2, game.height - fontSize), widthUnit * 2.2, buttonWidth, "BACK", () => {
+            game.currentScreenId = mainMenuId;
+        }, fontSize);
+
+        
+        fontSize = Math.floor(mapValue(game.width, 1280, 300, 60, 15));
+
+        this.buySpeedButton = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 - (fontSize / 1.2) / 2), widthUnit * 1.2, buttonHeight, "BUY", () => {
+            if (player.upgrades.speed < 5 && stats.money > this.prices.speed) {
+                player.upgrades.speed++;
+                stats.money -= this.prices.speed;
+                this.prices.speed *= 2;
+            }
+        }, fontSize)
+
+        this.buyDashLength = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 + (fontSize / 1.2)), widthUnit * 1.2, buttonHeight, "BUY", () => {
+            if (player.upgrades.dash_length < 5 && stats.money > this.prices.dashLength) {
+                player.upgrades.dash_length++;
+                stats.money -= this.prices.dashLength;
+                this.prices.dashLength *= 2;
+            }
+        }, fontSize)
+
+        this.buyShootingRate = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 + (fontSize * 2.1)), widthUnit * 1.2, buttonHeight, "BUY", () => {
+            if (player.upgrades.shooting_rate < 5 && stats.money > this.prices.shootingRate) {
+                player.upgrades.shooting_rate++;
+                stats.money -= this.prices.shootingRate;
+                this.prices.shootingRate *= 2;
+            }
+        }, fontSize)
+    },
+
+    init: function () {
+        this.resize();
+    },
+
+    draw: function () {
+        let fontSize = Math.floor(mapValue(game.width, 1280, 300, 100, 40));
+        game.context.font = `${fontSize}px Archivo Black`;
+
+        game.context.textAlign = 'center';
+        game.context.fillStyle = textColor;
+        game.context.fillText("UPGRADES", game.width / 2, (game.height / 10) * 2);
+
+        {
+            let fontSize = Math.floor(mapValue(game.width, 1280, 300, 60, 15));
+            game.context.font = `${fontSize}px Archivo Black`;
+
+            game.context.fillText("💰: " + stats.money, game.width / 2, (game.height / 10) * 2 + (fontSize * 2));
+
+            game.context.textAlign = 'right';
+            let align = game.width / 2;
+            game.context.fillText("SPEED:", align, (game.height / 10) * 5);
+            game.context.fillText("DASH LENGTH:", align, (game.height / 10) * 5 + fontSize * 1.2);
+            game.context.fillText("SHOOTING RATE:", align, (game.height / 10) * 5 + fontSize * 2.4);
+
+            game.context.textAlign = 'left';
+
+            align = game.width / 2 + (4.2 * fontSize);
+
+            game.context.fillText(`$${this.prices.speed}`, align, (game.height / 10) * 5);
+            game.context.fillText(`$${this.prices.dashLength}`, align, (game.height / 10) * 6);
+            game.context.fillText(`$${this.prices.shootingRate}`, align, (game.height / 10) * 7);
+
+            game.context.lineWidth = Math.floor(mapValue(game.width, 1280, 300, 10, 3));
+            game.context.strokeStyle = textColor;
+
+            for (let i = 0; i < 5; i++) {
+
+                let squareLength = fontSize / 2;
+
+                if (i < player.upgrades.speed) {
+                    game.context.fillRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 5 - (fontSize / 1.7), squareLength, squareLength);
+                }
+
+                if (i < player.upgrades.dash_length) {
+                    game.context.fillRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 6 - (fontSize / 1.7), squareLength, squareLength);
+                }
+
+                if (i < player.upgrades.shooting_rate) {
+                    game.context.fillRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 7 - (fontSize / 1.7), squareLength, squareLength);
+                }
+
+                game.context.strokeRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 5 - (fontSize / 1.7), squareLength, squareLength);
+                game.context.strokeRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 6 - (fontSize / 1.7), squareLength, squareLength);
+                game.context.strokeRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 7 - (fontSize / 1.7), squareLength, squareLength);
+            }
+        }
+
+        this.backButton.draw();
+        this.buySpeedButton.draw();
+        this.buyDashLength.draw();
+        this.buyShootingRate.draw();
+    },
+
+    update: function () {
+        this.backButton.update();
+        this.buySpeedButton.update();
+        this.buyDashLength.update();
+        this.buyShootingRate.update();
     }
 }
 

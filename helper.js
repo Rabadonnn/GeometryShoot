@@ -202,6 +202,7 @@ function rectFromPosition(pos, w, h) {
             height: 0,
             scale: [1.0, 1.0]
         };
+        this.rectangle = new Rectangle(0, 0, 0, 0);
         this.updateViewport();
     };
 
@@ -230,7 +231,10 @@ function rectFromPosition(pos, w, h) {
             this.viewport.bottom = this.viewport.top + this.viewport.height;
             this.viewport.scale[0] = this.context.canvas.width / this.viewport.width;
             this.viewport.scale[1] = this.context.canvas.height / this.viewport.height;
-            this.rectangle = new Rectangle(this.viewport.left, this.viewport.top, this.viewport.width, this.viewport.height);
+            this.rectangle.x = this.viewport.left;
+            this.rectangle.y = this.viewport.top;
+            this.rectangle.w = this.viewport.width;
+            this.rectangle.h = this.viewport.height;
         },
         zoomTo: function (z) {
             this.distance = z;
@@ -265,6 +269,9 @@ class Size {
         this.y = y;
     }
     rand() {
+        if (this.x == 0 && this.y == 0) {
+            return 0;
+        }
         return random(this.x, this.y);
     }
 }
@@ -317,5 +324,13 @@ class Color {
 }
 
 function createFont(size) {
-    return `${size} Arial Black`
+    return `${size}px Archivo Black`
+}
+
+
+function modifyRect(rectangle, position, width, height) {
+    rectangle.x = position.x - width / 2;
+    rectangle.y = position.y - height / 2;
+    rectangle.w = width;
+    rectangle.h = height;
 }
