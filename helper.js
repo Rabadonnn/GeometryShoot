@@ -334,3 +334,10 @@ function modifyRect(rectangle, position, width, height) {
     rectangle.w = width;
     rectangle.h = height;
 }
+
+var rotateVector = function (vec, ang) {
+    ang = -ang * (Math.PI / 180);
+    var cos = Math.cos(ang);
+    var sin = Math.sin(ang);
+    return new Vector2(Math.round(10000 * (vec.x * cos - vec.y * sin)) / 10000, Math.round(10000 * (vec.x * sin + vec.y * cos)) / 10000);
+};

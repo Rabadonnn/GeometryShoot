@@ -29,7 +29,7 @@ class Game {
         setpixelated(this.context);
         setpixelated(this.backBufferContext);
 
-        this.currentScreenId = upgradesScreenId;
+        this.currentScreenId = mainMenuId;
         this.camera = new Camera(this.context);
         this.c_updateFps = 0;
         this.fps = 0;
@@ -102,9 +102,9 @@ class Game {
 
 
         if (this.c_updateFps < 0) {
-            this.fps = (1 / this.delta).toFixed(2);
+            this.fps = Math.floor((1 / this.delta));
 
-            document.title = `FPS: ${this.fps} | MS: ${(this.delta * 1000).toFixed(0)}`;
+            document.title = `FPS: ${this.fps} | MS: ${Math.floor((this.delta * 1000))}`;
             this.c_updateFps = 0.02;
         } else {
             this.c_updateFps -= this.delta;
@@ -379,6 +379,18 @@ var particles = {
             return settings;
         },
 
+        scoutTrail: function () {
+            let settings = particles.configs.playerTrail();
+
+            settings.speed = new Size(0, 0);
+            settings.size = new Size(5, 15);
+            settings.textures = [
+                premadeAssets.scout_trail
+            ];
+
+            return settings;
+        },
+
         scoutExplosion: function () {
             let settings = new particles.Settings();
 
@@ -390,7 +402,7 @@ var particles = {
             settings.speed = new Size(500, 800);
             settings.systemLifetime = 0.02;
             settings.textures = [
-                assets['circle_purple'],
+                premadeAssets.scout_trail,
                 assets['circle_purple_dark']
             ];
 
@@ -424,13 +436,11 @@ function log(object) {
 
 var assetNames = [
     'player',
-    'circle',
     'scout',
     'circle_purple',
     'circle_purple_dark',
     'kamikaze',
-    'turretBase',
-    'turretCannon',
+    'turret',
     'dangerSign',
     'pentagon',
 
@@ -457,7 +467,6 @@ function loadAssets() {
             assetsLoaded++;
         }
         assets[assetNames[i]] = asset;
-        document.getElementById('loading').textContent = `Loading: ${(assetsLoaded / assetNames.length) * 100}%`;
     }
 }
 
@@ -473,7 +482,7 @@ window.onload = () => {
     GameScreen.init();
     UpgradesScreen.init();
 
-    document.getElementById("loading").innerText = `Loading: ${assetsLoaded}/${assetNames.length}`;
+    document.getElementById('loading').textContent = `Loading: ${Math.floor((assetsLoaded / assetNames.length) * 100)}%`;
 
     stats.load();
 
@@ -489,7 +498,8 @@ const premadeAssets = {
     red_bullet: document.createElement('canvas'),
     dark_red_circle: document.createElement('canvas'),
     black_bullet: document.createElement('canvas'),
-    yellow_circle: document.createElement('canvas'),
+    scout_trail: document.createElement('canvas'),
+    kamikaze_trail: document.createElement('canvas'),
 
     init: function () {
         this.bullet.width = 20;
@@ -528,10 +538,19 @@ const premadeAssets = {
         ctx.closePath();
         ctx.fill();
 
-        this.yellow_circle.width = 20;
-        this.yellow_circle.height = 20;
-        ctx = this.yellow_circle.getContext('2d');
-        ctx.fillStyle = 'yellow';
+        this.scout_trail.width = 20;
+        this.scout_trail.height = 20;
+        ctx = this.scout_trail.getContext('2d');
+        ctx.fillStyle = 'rgb(44, 19, 94)';
+        ctx.beginPath();
+        ctx.arc(10, 10, 10, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
+        this.kamikaze_trail.width = 20;
+        this.kamikaze_trail.height = 20;
+        ctx = this.kamikaze_trail.getContext('2d');
+        ctx.fillStyle = 'rgb(128, 41, 19)';
         ctx.beginPath();
         ctx.arc(10, 10, 10, 0, Math.PI * 2);
         ctx.closePath();
@@ -599,13 +618,17 @@ const enemy = {
     Scout: function (position) {
         this.position = position;
         this.direction;
-        this.speed = 125;
+        this.speed = 100;
         this.size = 30;
         this.rotation = 0;
         this.dead = false;
         this.bullets = [];
+        this.asset = assets['scout'];
+        this.rect = new Rectangle(0, 0, 0, 0);
+        this.trail = new particles.System(this.rect, particles.configs.scoutTrail());
 
-        this.c_shootingCooldown = 0.75;
+
+        this.c_shootingCooldown = 0.9;
 
         this.shoot = function () {
             let shootingCooldown = 0.75;
@@ -627,7 +650,6 @@ const enemy = {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.size / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
                     let rect = rectFromPosition(this.position, 10, 10);
-                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.scoutExplosion());
                     this.dead = true;
                     player.addScore(player.rewards.scout, this.position);
                 }
@@ -672,10 +694,20 @@ const enemy = {
                     }
                 }
             }
+
+            this.rect.x = this.position.x - this.size / 4;
+            this.rect.y = this.position.y - this.size / 4;
+            this.rect.w = 2;
+            this.rect.h = 2;
+            this.trail.rectangle = this.rect;
+
+            this.trail.update();
         }
 
         this.draw = function () {
-            Helper.drawImage(game.context, assets['scout'], this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
+            this.trail.draw();
+
+            Helper.drawImage(game.context, this.asset, this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size, this.rotation);
 
             for (let i = 0; i < this.bullets.length; i++) {
                 this.bullets[i].draw();
@@ -695,13 +727,18 @@ const enemy = {
         this.iLifetime = this.lifetime;
         this.speed = 100;
         this.unit = 1;
+        this.rect = new Rectangle(0, 0, 0, 0);
+        let s = particles.configs.scoutTrail();
+        s.size = new Size(10, 20);
+        s.textures = [
+            premadeAssets.kamikaze_trail
+        ];
+        this.trail = new particles.System(this.rect, s);
 
         this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
                 if (Helper.distance(this.position, player.bullets[i].position) < this.iSize / 1.5) {
                     player.bullets[i].dead = true;
-                    let rect = rectFromPosition(this.position, 10, 10);
-                    particles.new(rectFromPosition(rect, this.size, this.size), particles.configs.kamikazeExplosion());
                     this.dead = true;
                     player.addScore(player.rewards.kamikaze, this.position);
                 }
@@ -765,6 +802,14 @@ const enemy = {
             this.checkCollisionWithPlayerBullets();
 
             this.position.toInt();
+
+            this.rect.x = this.position.x + this.iSize / 4;
+            this.rect.y = this.position.y + this.iSize / 4;
+            this.rect.w = 2;
+            this.rect.h = 2;
+            this.trail.rectangle = this.rect;
+
+            this.trail.update();
         }
 
         this.pulse = function () {
@@ -777,6 +822,7 @@ const enemy = {
         }
 
         this.draw = function () {
+            this.trail.draw();
             Helper.drawImage(game.context, assets['kamikaze'], this.position.x, this.position.y, this.size, this.size, this.rotation);
         }
     },
@@ -790,14 +836,19 @@ const enemy = {
         this.checkPoint = this.position;
         this.c_shootingCooldown = 1;
         this.c_standingCooldown;
+        let s = particles.configs.scoutTrail();
+        this.rect = new Rectangle(0, 0, 0, 0);
+        s.size = new Size(10, 20);
+        s.textures = [
+            premadeAssets.black_bullet
+        ];
+        this.trail = new particles.System(this.rect, s);
 
         this.checkCollisionWithPlayerBullets = function () {
             for (let i = 0; i < player.bullets.length; i++) {
                 let contactPoint = new Vector2(this.position.x + this.baseSize / 2, this.position.y + this.baseSize / 2);
                 if (Helper.distance(contactPoint, player.bullets[i].position) < this.baseSize / 2 + player.bullets[i].size / 2) {
                     player.bullets[i].dead = true;
-                    let rect = rectFromPosition(this.position, this.baseSize, this.baseSize);
-                    particles.new(rect, particles.configs.turretExplosion());
                     this.dead = true;
                     player.addScore(player.rewards.turret, this.position)
                 }
@@ -855,10 +906,19 @@ const enemy = {
             }
             this.position.add(direction);
             this.position.toInt();
+
+            this.rect.x = this.position.x + this.baseSize / 4;
+            this.rect.y = this.position.y + this.baseSize / 4;
+            this.rect.w = 2;
+            this.rect.h = 2;
+            this.trail.rectangle = this.rect;
+
+            this.trail.update();
         }
 
         this.draw = function () {
-            Helper.drawImage(game.context, assets['turretBase'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
+            this.trail.draw();
+            Helper.drawImage(game.context, assets['turret'], this.position.x, this.position.y, this.baseSize, this.baseSize, this.rotation);
         }
     },
 
@@ -870,10 +930,16 @@ const enemy = {
         this.rotation = 0;
         this.size = 40;
         this.cooldown = 2;
-        this.dangerSize = this.size;
         this.unit = 1;
         this.dead = false;
         this.target.toInt();
+        let s = particles.configs.scoutTrail();
+        s.textures = [
+            assets['pentagon']
+        ];
+        s.size = new Size(15, 25);
+        this.rect = new Rectangle(0, 0, 0, 0);
+        this.trail = new particles.System(this.rect, s);
         this.explode = function () {
 
             for (let i = 0; i < 360; i += 10) {
@@ -905,20 +971,21 @@ const enemy = {
 
                 this.position.toInt();
 
-            } else {
-                if (this.dangerSize > this.size * 1.25 || this.dangerSize < this.size * 0.75) {
-                    this.unit *= -1;
-                }
-                this.dangerSize += this.unit;
-                this.cooldown -= game.delta;
+                this.rect.x = this.position.x + this.size / 4;
+                this.rect.y = this.position.y + this.size / 4;
+                this.rect.w = 2;
+                this.rect.h = 2;
+                this.trail.rectangle = this.rect;
+
+                this.trail.update();
+
             }
         }
 
         this.draw = function () {
             if (this.cooldown < 0) {
+                this.trail.draw();
                 Helper.drawImage(game.context, assets['pentagon'], this.position.x, this.position.y, this.size, this.size, this.rotation);
-            } else {
-                Helper.drawImage(game.context, assets['dangerSign'], this.target.x, this.target.y, this.dangerSize, this.dangerSize);
             }
         }
     },
@@ -969,20 +1036,26 @@ const enemy = {
 
         if (this.c_enemyCountIncreaseCD < 0) {
             this.maxEnemyCount++;
-            this.c_enemyCountIncreaseCD = random(this.maxEnemyCount / 2, this.maxEnemyCount);
+            this.c_enemyCountIncreaseCD = 1;
         } else {
             this.c_enemyCountIncreaseCD -= game.delta;
         }
 
-        if (this.c_spawnCooldown < 0 && this.enemies.length == 0) {
+        if (this.c_spawnCooldown < 0 && this.enemies.length < this.maxEnemyCount) {
 
             let pos = this.chooseSpawnPos();
 
-            if (this.enemies.length < this.maxEnemyCount) {
-                this.spawnEnemy(pos);
+            this.spawnEnemy(pos);
+            let spawnCooldown = random(1, 2);
+            if (player.upgrades.speed > 2) {
+                spawnCooldown -= 0.2;
             }
-
-            let spawnCooldown = random(0.5, 2);
+            if (player.upgrades.shooting_rate > 3) {
+                spawnCooldown -= 0.2;
+            }
+            if (player.upgrades.shoot_directions > 3) {
+                spawnCooldown -= 0.2;
+            }
             this.c_spawnCooldown = spawnCooldown;
         } else {
             this.c_spawnCooldown -= game.delta;
@@ -997,6 +1070,41 @@ const enemy = {
 
         for (let i = 0; i < this.enemies.length; i++) {
             if (this.enemies[i].dead) {
+
+                if (random(0, 100) < 70) {
+                    let a = Math.floor(random(0, 360));
+                    let pos = new Vector2(0, 0);
+                    let r = Math.floor(random(70, 120));
+                    pos.x = this.enemies[i].position.x + Math.cos(a) * r;
+                    pos.y = this.enemies[i].position.y + Math.sin(a) * r;
+                    let e = this.enemies[i];
+
+                    if (e instanceof enemy.Scout) {
+                        money = 10 * (player.upgrades.speed + 1);
+                    } else if (e instanceof enemy.Kamikaze) {
+                        money = 15 * (player.upgrades.shoot_directions + 1);
+                    } else if (e instanceof enemy.Turret) {
+                        money = 25 * (player.upgrades.shooting_rate + 1);
+                    }
+
+                    money = Math.floor(money);
+                    money *= player.multiplier;
+
+                    p = new popup.Popup(`+$${money}`, pos);
+                    stats.money += money;
+                    localStorage.setItem('money', JSON.stringify(stats.money));
+                    popup.popups.push(p)
+                }
+
+                if (this.enemies[i] instanceof enemy.Scout) {
+                    particles.new(rectFromPosition(this.enemies[i].position, 3, 3), particles.configs.scoutExplosion());
+                } else if (this.enemies[i] instanceof enemy.Kamikaze) {
+                    particles.new(rectFromPosition(this.enemies[i].position, 3, 3), particles.configs.kamikazeExplosion());
+                } else if (this.enemies[i] instanceof enemy.Turret) {
+                    let rect = rectFromPosition(this.enemies[i].position, 3, 3);
+                    particles.new(rect, particles.configs.turretExplosion());
+                }
+
                 this.enemies.splice(i, 1);
             } else {
                 this.enemies[i].update();
@@ -1033,11 +1141,17 @@ const enemy = {
     },
 
     chooseSpawnPos() {
-        let angle = random(0, 360).toFixed(0);
-        let radius = random(game.width / 2, game.height / 2);
-        let x = player.position.x + Math.cos(angle) * radius;
-        let y = player.position.y + Math.sin(angle) * radius;
-        let pos = new Vector2(x, y);
+        let pos;
+        if (random(0, 100) < 50) {
+            let angle = Math.floor(random(0, 360));
+            let radius = random(game.width / 2, game.height / 2);
+            let x = player.position.x + Math.cos(angle) * radius;
+            let y = player.position.y + Math.sin(angle) * radius;
+            pos = new Vector2(x, y);
+        } else {
+            pos = Helper.randomPointInRect(game.camera.rectangle);
+        }
+
         return pos;
     },
 
@@ -1073,7 +1187,6 @@ class Player {
         this.position = new Vector2(0, 0);
         this.rotation = 0;
         this.health = 3;
-        this.speed = 300;
         this.direction = new Vector2(0, 0);
         this.size = 40;
         this.idleCheckpoint = this.position;
@@ -1081,7 +1194,6 @@ class Player {
         this.score = 0;
         this.camPos = this.position;
         this.bullets = [];
-        this.c_shootingCooldown = 0;
         this.damaged = false;
         this.spaceBarClicked = false;
 
@@ -1095,7 +1207,7 @@ class Player {
 
         this.upgrades = {
             speed: 0,
-            dash_length: 0,
+            shoot_directions: 0,
             shooting_rate: 0
         };
 
@@ -1163,20 +1275,6 @@ class Player {
                 }
             }
         };
-
-        window.addEventListener('keydown', (e) => {
-            if (e.keyCode == 32 && this.dashes > 0 && !this.dashing && this.joystick.hasValue && !this.spaceBarClicked) {
-                this.dashes--;
-                this.dashing = true;
-                this.spaceBarClicked = true;
-            }
-        });
-
-        window.addEventListener('keyup', (e) => {
-            if (e.keyCode == 32) {
-                this.spaceBarClicked = false;
-            }
-        });
     }
 
     addScore(amount, position) {
@@ -1206,35 +1304,19 @@ class Player {
         this.bullets.length = 0;
         this.score = 0;
 
+        this.speed = 225 + (40 * this.upgrades.speed);
+
         this.damaged = false;
         this.dmgCooldown = 0.12;
 
-        this.dashing = false;
-        this.dashDuration = 0.4;
-        this.c_dashDuration = this.dashDuration;
-        this.dashes = 3;
+        this.shootingCooldown = 0.3 - (0.05 * this.upgrades.shooting_rate);
+        this.c_shootingCooldown = 0;
 
         this.rectangle = rectFromPosition(this.position, this.size, this.size);
 
-        this.camSpeed = 1;
+        this.camSpeed = 0.02;
 
         this.multiplier = 1;
-    }
-
-    dash() {
-        if (this.dashDirection == null) {
-            this.dashDirection = this.joystick.direction();
-        }
-        if (this.c_dashDuration > 0) {
-            this.dashDirection.normalize();
-            this.dashDirection.mult(this.speed * 6 * game.delta);
-            player.position.add(this.dashDirection);
-            this.c_dashDuration -= game.delta;
-        } else {
-            this.dashing = false;
-            this.dashDirection = null;
-            this.c_dashDuration = this.dashDuration;
-        }
     }
 
     update() {
@@ -1249,17 +1331,7 @@ class Player {
         }
 
         if (!this.dead) {
-
-            if (this.addDashCooldown < 0) {
-                this.dashes++;
-                this.addDashCooldown = 4;
-            } else if (this.dashes < 3) {
-                this.addDashCooldown -= game.delta;
-            }
-
-            if (this.dashing) {
-                this.dash();
-            } else if (this.joystick.hasValue) {
+            if (this.joystick.hasValue) {
 
                 this.direction = this.joystick.direction();
                 this.direction.normalize();
@@ -1286,11 +1358,8 @@ class Player {
                 }
             }
 
-            if (this.dashing) {
-                this.camPos = Vector2.lerp(this.camPos, this.position, 0.1);
-            } else {
-                this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
-            }
+            this.camPos = Vector2.lerp(this.camPos, this.position, this.camSpeed);
+
 
             game.camera.moveTo(this.camPos.x, this.camPos.y);
 
@@ -1305,12 +1374,42 @@ class Player {
     }
 
     shoot() {
-        let shootingCooldown = 0.3;
-
         if (this.c_shootingCooldown < 0 && (this.direction.x != 0 && this.direction.y != 0)) {
-            let bullet = new projectile.Bullet(this.position, this.direction);
-            this.bullets.push(bullet);
-            this.c_shootingCooldown = shootingCooldown;
+            let b = [];
+
+            let dirs = this.upgrades.shoot_directions
+
+            if (dirs == 0) {
+                b.push(new projectile.Bullet(this.position, this.direction));
+            } else if (dirs == 1) {
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -2)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 2)));
+            } else if (dirs == 2) {
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -3)));
+                b.push(new projectile.Bullet(this.position, this.direction));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 3)));
+            } else if (dirs == 3) {
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -2)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 2)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -4)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 4)));
+            } else if (dirs == 4) {
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -3)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 3)));
+                b.push(new projectile.Bullet(this.position, this.direction));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -5)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 5)));
+            } else if (dirs == 5) {
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -3)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 3)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -5)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 5)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, -8)));
+                b.push(new projectile.Bullet(this.position, rotateVector(this.direction, 8)));
+            }
+
+            Array.prototype.push.apply(this.bullets, b);
+            this.c_shootingCooldown = this.shootingCooldown;
         } else {
             this.c_shootingCooldown -= game.delta;
         }
@@ -1404,6 +1503,8 @@ var stats = {
     save: function () {
         localStorage.setItem('high_score', JSON.stringify(this.high_score));
         localStorage.setItem('money', JSON.stringify(this.money));
+        localStorage.setItem('upgrades', JSON.stringify(player.upgrades));
+        localStorage.setItem('prices', JSON.stringify(UpgradesScreen.prices));
     },
 
     load: function () {
@@ -1417,14 +1518,28 @@ var stats = {
             this.money = money;
         }
 
+        let upgrades = JSON.parse(localStorage.getItem('upgrades'));
+        if (upgrades != null) {
+            player.upgrades = upgrades;
+        }
+
+        let prices = JSON.parse(localStorage.getItem('prices'));
+        if (prices != null) {
+            UpgradesScreen.prices = prices;
+        }
     },
 
     reset: function () {
-        if (this.high_score != 0) {
-            localStorage.clear();
-            this.high_score = 0;
-            this.load();
-        }
+        this.high_score = 0;
+        this.money = 0;
+        player.upgrades.speed = 0;
+        player.upgrades.shoot_directions = 0;
+        player.upgrades.shooting_rate = 0;
+        UpgradesScreen.prices.shoot_directions = 100;
+        UpgradesScreen.prices.shootingRate = 100;
+        UpgradesScreen.prices.speed = 100;
+        this.save();
+        this.load();
     }
 }
 
@@ -1522,9 +1637,50 @@ var MainMenuScreen = {
         game.context.font = `${fontSize}px Archivo Black`;
         game.context.textAlign = 'center';
         game.context.fillText("🏆: " + stats.high_score, this.aboutButton.rectangle.center().x, this.playButton.rectangle.bottom() - fontSize / 2);
-        game.context.fillText("💰: " + stats.money, this.resetButton.rectangle.center().x, this.playButton.rectangle.bottom() - fontSize / 2);
+        game.context.fillText("💰: " + stats.money + "$", this.resetButton.rectangle.center().x, this.playButton.rectangle.bottom() - fontSize / 2);
     }
 };
+
+var healthPoint = {
+    cooldown: 30,
+    position: null,
+    reset: function () {
+        this.cooldown = 30;
+        this.position = null;
+    },
+
+    update: function () {
+
+        if (this.position == null) {
+            this.position = Helper.randomPointInRect(game.extraRectangle);
+        }
+
+        if (this.cooldown < 0) {
+            if (Helper.distance(player.position, this.position) < 35 / 2 + player.size / 2) {
+                if (player.health < 3) {
+                    player.health++;
+                }
+                this.cooldown = Math.floor(random(20, 45));
+                this.position = null;
+                this.trail = null;
+            }
+        } else {
+            this.cooldown -= game.delta
+        }
+    },
+
+    draw: function () {
+        if (this.cooldown < 0) {
+            x = this.position.x;
+            y = this.position.y;
+            game.context.fillStyle = textColor;
+            game.context.beginPath();
+            game.context.arc(x, y, 10, 0, Math.PI * 2);
+            game.context.closePath();
+            game.context.fill();
+        }
+    }
+}
 
 let gamePaused = false;
 function resetGameScreen() {
@@ -1532,9 +1688,8 @@ function resetGameScreen() {
     enemy.reset();
     particles.reset();
     gamePaused = false;
-    game.showTip = true;
-    game.tipCooldown = 1.4;
     background.elements.length = 0;
+    healthPoint.reset();
 }
 var GameScreen = {
 
@@ -1592,6 +1747,7 @@ var GameScreen = {
             enemy.update();
             particles.update();
             popup.update();
+            healthPoint.update();
         } else {
             this.menuButton.update();
             this.restartButton.update();
@@ -1609,6 +1765,7 @@ var GameScreen = {
 
     draw: function () {
         game.camera.begin();
+        healthPoint.draw();
         background.draw();
         particles.draw();
         player.draw();
@@ -1650,47 +1807,36 @@ var GameScreen = {
             game.context.font = `${fontSize}px Archivo Black`;
 
             game.context.fillStyle = textColor;
-            game.context.fillText("You have been slain!", game.width / 2, 100);
-            game.context.fillText("Score: " + player.score, game.width / 2, 100 + fontSize * 1.25);
+            game.context.fillText("You have been slain!", game.width / 2, fontSize * 3);
+            game.context.fillText("Score: " + player.score, game.width / 2, fontSize * 4);
 
             this.restartButton.draw();
             this.menuButton.draw();
         } else {
-            this.drawPlayerHealthAndDashes();
+            this.drawPlayerHealth();
             this.pauseButton.draw();
 
             game.context.font = "40px Archivo Black";
             game.context.fillStyle = textColor;
-            game.context.fillText(player.score, game.width / 2, 40);
+            let score = player.score;
+            if (score > stats.high_score) {
+                score = "🏆" + score;
+            }
+            game.context.fillText(score, game.width / 2, 40);
             game.context.font = "20px Archivo Black";
         }
 
     },
 
-    drawPlayerHealthAndDashes: function () {
+    drawPlayerHealth: function () {
         if (player.health > 0) {
             for (let i = 0; i < player.health; i++) {
                 let x = 35 + (i * 35);
                 game.context.fillStyle = textColor;
-                game.context.lineWidth = 2;
                 game.context.beginPath();
                 game.context.arc(x, 25, 10, 0, Math.PI * 2);
                 game.context.closePath();
                 game.context.fill();
-            }
-        }
-
-        if (player.dashes > 0) {
-            for (let i = 0; i < player.dashes; i++) {
-                let x = 30 + (i * 35);
-
-                game.context.strokeStyle = textColor;
-                game.context.lineWidth = 7;
-                game.context.beginPath();
-                game.context.moveTo(x, 60 + 10);
-                game.context.lineTo(x + 10, 60 - 10);
-                game.context.closePath();
-                game.context.stroke();
             }
         }
     }
@@ -1729,9 +1875,12 @@ var AboutScreen = {
         fontSize = Math.floor(mapValue(game.width, 1280, 300, 40, 15));
         game.context.font = `${fontSize}px Archivo Black`;
 
-        game.context.fillText("Game made by Mihai Solomon,", game.width / 2, game.height / 2);
-        game.context.fillText("feel free to contact me at", game.width / 2, game.height / 2 + fontSize);
-        game.context.fillText("solomonmihai10@gmail.com", game.width / 2, game.height / 2 + fontSize * 2);
+        game.context.fillText("Click, hold and move mouse to play", game.width / 2, game.height / 2 - fontSize);
+
+        game.context.fillText("Game made by Mihai Solomon,", game.width / 2, game.height / 2 + fontSize * 2);
+        game.context.fillText("feel free to contact me at", game.width / 2, game.height / 2 + fontSize * 3);
+        game.context.fillText("solomonmihai10@gmail.com", game.width / 2, game.height / 2 + fontSize * 4);
+
         this.backButton.draw();
     }
 }
@@ -1740,12 +1889,12 @@ var UpgradesScreen = {
 
     backButton: null,
     buySpeedButton: null,
-    buyDashLength: null,
+    buyShootDirections: null,
     buyShootingRate: null,
 
     prices: {
         speed: 100,
-        dashLength: 100,
+        shoot_directions: 100,
         shootingRate: 100
     },
 
@@ -1760,35 +1909,48 @@ var UpgradesScreen = {
             game.currentScreenId = mainMenuId;
         }, fontSize);
 
-        
+
         fontSize = Math.floor(mapValue(game.width, 1280, 300, 60, 15));
 
         this.buySpeedButton = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 - (fontSize / 1.2) / 2), widthUnit * 1.2, buttonHeight, "BUY", () => {
-            if (player.upgrades.speed < 5 && stats.money > this.prices.speed) {
+            if (player.upgrades.speed < 5 && stats.money >= this.prices.speed) {
                 player.upgrades.speed++;
                 stats.money -= this.prices.speed;
-                this.prices.speed *= 2;
+                this.prices.speed = Math.floor(this.prices.speed * 2.5);
+                if (player.upgrades.speed == 5) {
+                    this.prices.speed = "MAX";
+                }
+                stats.save();
             }
         }, fontSize)
 
-        this.buyDashLength = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 + (fontSize / 1.2)), widthUnit * 1.2, buttonHeight, "BUY", () => {
-            if (player.upgrades.dash_length < 5 && stats.money > this.prices.dashLength) {
-                player.upgrades.dash_length++;
-                stats.money -= this.prices.dashLength;
-                this.prices.dashLength *= 2;
+        this.buyShootDirections = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 + (fontSize / 1.2)), widthUnit * 1.2, buttonHeight, "BUY", () => {
+            if (player.upgrades.shoot_directions < 5 && stats.money >= this.prices.shoot_directions) {
+                player.upgrades.shoot_directions++;
+                stats.money -= this.prices.shoot_directions;
+                this.prices.shoot_directions = Math.floor(this.prices.shoot_directions * 2.5);
+                if (player.upgrades.shoot_directions == 5) {
+                    this.prices.shoot_directions = "MAX";
+                }
+                stats.save();
             }
         }, fontSize)
 
         this.buyShootingRate = new Button(new Vector2(game.width - widthUnit * 0.7, (game.height / 10) * 5 + (fontSize * 2.1)), widthUnit * 1.2, buttonHeight, "BUY", () => {
-            if (player.upgrades.shooting_rate < 5 && stats.money > this.prices.shootingRate) {
+            if (player.upgrades.shooting_rate < 5 && stats.money >= this.prices.shootingRate) {
                 player.upgrades.shooting_rate++;
                 stats.money -= this.prices.shootingRate;
-                this.prices.shootingRate *= 2;
+                this.prices.shootingRate = Math.floor(this.prices.shootingRate * 2.5);
+                if (player.upgrades.shooting_rate == 5) {
+                    this.prices.shootingRate = "MAX";
+                }
+                stats.save();
             }
         }, fontSize)
     },
 
     init: function () {
+        stats.load();
         this.resize();
     },
 
@@ -1804,12 +1966,12 @@ var UpgradesScreen = {
             let fontSize = Math.floor(mapValue(game.width, 1280, 300, 60, 15));
             game.context.font = `${fontSize}px Archivo Black`;
 
-            game.context.fillText("💰: " + stats.money, game.width / 2, (game.height / 10) * 2 + (fontSize * 2));
+            game.context.fillText("💰: " + stats.money + "$", game.width / 2, (game.height / 10) * 2 + (fontSize * 2));
 
             game.context.textAlign = 'right';
             let align = game.width / 2;
             game.context.fillText("SPEED:", align, (game.height / 10) * 5);
-            game.context.fillText("DASH LENGTH:", align, (game.height / 10) * 5 + fontSize * 1.2);
+            game.context.fillText("SHOOT WAYS:", align, (game.height / 10) * 5 + fontSize * 1.2);
             game.context.fillText("SHOOTING RATE:", align, (game.height / 10) * 5 + fontSize * 2.4);
 
             game.context.textAlign = 'left';
@@ -1817,7 +1979,7 @@ var UpgradesScreen = {
             align = game.width / 2 + (4.2 * fontSize);
 
             game.context.fillText(`$${this.prices.speed}`, align, (game.height / 10) * 5);
-            game.context.fillText(`$${this.prices.dashLength}`, align, (game.height / 10) * 6);
+            game.context.fillText(`$${this.prices.shoot_directions}`, align, (game.height / 10) * 6);
             game.context.fillText(`$${this.prices.shootingRate}`, align, (game.height / 10) * 7);
 
             game.context.lineWidth = Math.floor(mapValue(game.width, 1280, 300, 10, 3));
@@ -1831,7 +1993,7 @@ var UpgradesScreen = {
                     game.context.fillRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 5 - (fontSize / 1.7), squareLength, squareLength);
                 }
 
-                if (i < player.upgrades.dash_length) {
+                if (i < player.upgrades.shoot_directions) {
                     game.context.fillRect(game.width / 2 + (fontSize / 8) + (i * fontSize * 0.8), (game.height / 10) * 6 - (fontSize / 1.7), squareLength, squareLength);
                 }
 
@@ -1847,14 +2009,14 @@ var UpgradesScreen = {
 
         this.backButton.draw();
         this.buySpeedButton.draw();
-        this.buyDashLength.draw();
+        this.buyShootDirections.draw();
         this.buyShootingRate.draw();
     },
 
     update: function () {
         this.backButton.update();
         this.buySpeedButton.update();
-        this.buyDashLength.update();
+        this.buyShootDirections.update();
         this.buyShootingRate.update();
     }
 }
