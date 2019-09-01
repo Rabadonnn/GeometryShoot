@@ -341,3 +341,10 @@ var rotateVector = function (vec, ang) {
     var sin = Math.sin(ang);
     return new Vector2(Math.round(10000 * (vec.x * cos - vec.y * sin)) / 10000, Math.round(10000 * (vec.x * sin + vec.y * cos)) / 10000);
 };
+
+var randomInArea = function (pos, range) {
+    let angle = Math.floor(random(0, 360));
+    let x = pos.x + Math.cos(angle) * range;
+    let y = pos.y + Math.sin(angle) * range;
+    return new Vector2(x, y);
+}
